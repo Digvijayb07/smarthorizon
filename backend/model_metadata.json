@@ -1,0 +1,78 @@
+{
+  "model_file": "fraud_model.pkl",
+  "feature_columns": [
+    "step",
+    "type_encoded",
+    "amount",
+    "oldbalanceOrg",
+    "newbalanceOrig",
+    "oldbalanceDest",
+    "newbalanceDest",
+    "balance_diff_orig",
+    "balance_diff_dest",
+    "error_balance_orig",
+    "error_balance_dest",
+    "amount_to_orig_ratio",
+    "amount_to_dest_ratio",
+    "orig_balance_zeroed",
+    "dest_was_zero",
+    "is_large_amount",
+    "is_very_large",
+    "step_mod_24",
+    "is_night_txn",
+    "is_transfer",
+    "is_cashout",
+    "dest_unchanged",
+    "amount_dest_balance_ratio"
+  ],
+  "target_column": "isFraud",
+  "threshold": 0.5,
+  "metrics": {
+    "roc_auc": 0.9994,
+    "f1_score": 0.9765,
+    "total_training_samples": 205500
+  },
+  "risk_bands": {
+    "LOW": [
+      0.0,
+      0.3
+    ],
+    "MEDIUM": [
+      0.3,
+      0.6
+    ],
+    "HIGH": [
+      0.6,
+      0.8
+    ],
+    "CRITICAL": [
+      0.8,
+      1.0
+    ]
+  },
+  "feature_descriptions": {
+    "step": "Transaction timestamp hour step",
+    "type_encoded": "Encoded transaction channel/type",
+    "amount": "Transaction amount in INR",
+    "oldbalanceOrg": "Origin account balance before transaction",
+    "newbalanceOrig": "Origin account balance after transaction",
+    "oldbalanceDest": "Destination account balance before transaction",
+    "newbalanceDest": "Destination account balance after transaction",
+    "balance_diff_orig": "Net reduction from sender account",
+    "balance_diff_dest": "Net credit to receiver account",
+    "error_balance_orig": "Sender balance reconciliation discrepancy",
+    "error_balance_dest": "Receiver balance reconciliation discrepancy",
+    "amount_to_orig_ratio": "Transaction amount relative to sender balance",
+    "amount_to_dest_ratio": "Transaction amount relative to destination balance",
+    "orig_balance_zeroed": "Sender balance fully depleted to 0",
+    "dest_was_zero": "Destination account opened or previously zero-balance",
+    "is_large_amount": "Amount exceeds 90th percentile threshold",
+    "is_very_large": "Amount exceeds 99th percentile threshold",
+    "step_mod_24": "Hour of day (0-23)",
+    "is_night_txn": "Night-time transaction window (10PM - 5AM)",
+    "is_transfer": "TRANSFER payment rail",
+    "is_cashout": "CASH_OUT withdrawal rail",
+    "dest_unchanged": "Receiver balance unchanged (passthrough transit)",
+    "amount_dest_balance_ratio": "Transfer ratio to final recipient balance"
+  }
+}

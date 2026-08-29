@@ -1,0 +1,83 @@
+"""
+Horizon -- FastAPI Backend
+=========================
+Main application entry point.
+Loads the fraud model at startup and registers all agent routers.
+"""
+
+import os
+import pickle
+import json
+from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from database import init_db
+
+load_dotenv()
+
+# Ensure database tables exist
+init_db()
+
+from state import app_state
+
+# Load model and metadata at startup
+MODEL_PATH = "fraud_model.pkl"
+META_PATH = "model_metadata.json"
+
+if os.path.exists(MODEL_PATH):
+    try:
+        with open(MODEL_PATH, "rb") as f:
+            app_state.model = pickle.load(f)
+        print(f"[STARTUP] Loaded fraud model: {MODEL_PATH}")
+    except Exception as e:
+        print(f"[STARTUP ERROR] Model loading failed: {e}")
+
+if os.path.exists(META_PATH):
+    try:
+        with open(META_PATH, "r") as f:
+            app_state.metadata = json.load(f)
+        print(f"[STARTUP] Loaded metadata: {META_PATH}")
+    except Exception as e:
+        print(f"[STARTUP ERROR] Metadata loading failed: {e}")
+
+# FastAPI App
+app = FastAPI(
+    title="Horizon - Financial Crime Investigation API",
+    description="Autonomous multi-agent financial crime investigation system. AI recommends, human decides.",
+    version="2.0.0",
+)
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Routers
+from routers import cases, score, graph, investigate, reports, audit
+
+app.include_router(cases.router,       prefix="/api/cases",       tags=["Cases"])
+app.include_router(score.router,       prefix="/api/score",       tags=["Score Agent"])
+app.include_router(graph.router,       prefix="/api/graph",       tags=["Graph Agent"])
+app.include_router(investigate.router, prefix="/api/investigate", tags=["Investigation"])
+app.include_router(reports.router,     prefix="/api/reports",     tags=["Reports"])
+app.include_router(audit.router,       prefix="/api/audit",       tags=["Audit"])
+
+@app.get("/")
+def root():
+    return {
+        "service": "Horizon Investigation API",
+        "status": "online",
+        "model_loaded": app_state.model is not None,
+        "version": "2.0.0"
+    }
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "model": "loaded" if app_state.model is not None else "not loaded"
+    }

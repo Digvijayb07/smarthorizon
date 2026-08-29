@@ -1,0 +1,133 @@
+# =============================================================================
+# Safe Flow — .gitignore
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Secrets & Environment Variables
+# -----------------------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+backend/.env
+# Keep the example file so team knows what vars are needed
+!backend/.env.example
+
+# -----------------------------------------------------------------------------
+# Python
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.egg
+*.egg-info/
+.eggs/
+dist/
+build/
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# mypy / ruff / pyright
+.mypy_cache/
+.ruff_cache/
+pyrightconfig.json
+
+# -----------------------------------------------------------------------------
+# ML Models & Large Binary Files  (commit configs/metadata, not binaries)
+# -----------------------------------------------------------------------------
+*.pkl
+*.joblib
+*.h5
+*.model
+*.bin
+*.onnx
+# XGBoost model binary
+backend/fraud_model.pkl
+backend/models/
+# smarthoriagent trained artifacts
+smarthoriagent/models/isolation_forest/*.pkl
+smarthoriagent/models/random_forest/*.pkl
+smarthoriagent/models/xgboost/model.*
+# But keep metadata and feature name JSON files
+!smarthoriagent/models/**/*.json
+!smarthoriagent/models/**/*.csv
+
+# -----------------------------------------------------------------------------
+# Database  (SQLite is runtime state, not source)
+# -----------------------------------------------------------------------------
+*.db
+*.sqlite
+*.sqlite3
+backend/horizon.db
+
+# ChromaDB vector store
+chroma_db/
+chromadb/
+
+# -----------------------------------------------------------------------------
+# Node / Frontend (Vite)
+# -----------------------------------------------------------------------------
+node_modules/
+frontend/node_modules/
+.next/
+out/
+# Vite build output
+frontend/dist/
+dist/
+
+# Frontend env
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+# -----------------------------------------------------------------------------
+# Logs
+# -----------------------------------------------------------------------------
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# -----------------------------------------------------------------------------
+# OS & IDE
+# -----------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# -----------------------------------------------------------------------------
+# Misc
+# -----------------------------------------------------------------------------
+# Temporary review clone (used during branch analysis)
+graph_agent_review/
+
+# Large raw dataset files (too big for GitHub — use DVC or share via Drive)
+backend/drivematerial/drive_material/Data/paysim dataset.csv
+backend/drivematerial/drive_material/Data/paysim_account_customer_mapping.csv
+
+# Generic large binary/data formats
+*.csv.gz
+*.parquet
