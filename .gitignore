@@ -57,7 +57,7 @@ pyrightconfig.json
 *.bin
 *.onnx
 # XGBoost model binary
-backend/fraud_model.pkl
+# fraud_model.pkl — included in repo (only 1MB)
 backend/models/
 # smarthoriagent trained artifacts
 smarthoriagent/models/isolation_forest/*.pkl
