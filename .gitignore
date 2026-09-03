@@ -58,7 +58,7 @@ pyrightconfig.json
 *.bin
 *.onnx
 # XGBoost model binary
-# fraud_model.pkl — included in repo (only 1MB)
+# fraud_model.pkl ï¿½ included in repo (only 1MB)
 backend/models/
 # smarthoriagent trained artifacts
 smarthoriagent/models/isolation_forest/*.pkl
@@ -137,3 +137,9 @@ backend/drivematerial/drive_material/Data/paysim_account_customer_mapping.csv
 .wrangler/
 frontend/.output/
 frontend/.wrangler/
+
+
+horizon2_audit_and_test_plan.md
+implementation_plan.md
+PROJECT_STATUS_AND_MERGE_SUMMARY.md
+walkthrough.md
