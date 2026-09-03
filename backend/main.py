@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from database import init_db
 from auth import LoginRequest, authenticate
 
-load_dotenv()
+load_dotenv(override=True)
 
 # Ensure database tables exist
 init_db()
@@ -48,21 +48,26 @@ app = FastAPI(
     version="2.0.0",
 )
 
-# CORS — environment-driven, never wildcard + credentials
-_cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:8080,http://localhost:5173,http://localhost:3000,http://127.0.0.1:8080")
-cors_origins = [origin.strip() for origin in _cors_raw.split(",") if origin.strip()]
-
-# Safety: if someone accidentally sets *, replace with explicit origins
-if "*" in cors_origins:
-    print("[CORS WARNING] Wildcard '*' is not safe with credentials. Using explicit origins instead.")
-    cors_origins = ["http://localhost:8080", "http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:8080"]
+# CORS — explicitly allow all local frontend ports
+cors_origins = [
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+]
+_cors_raw = os.getenv("CORS_ORIGINS", "")
+for origin in _cors_raw.split(","):
+    cleaned = origin.strip()
+    if cleaned and cleaned != "*" and cleaned not in cors_origins:
+        cors_origins.append(cleaned)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Routers
