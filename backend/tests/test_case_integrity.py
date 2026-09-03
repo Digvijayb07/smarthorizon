@@ -36,14 +36,20 @@ class TestInvestigationIdempotency:
         token = _login()
         headers = _auth_header(token)
 
+        # Get an existing transaction from the database if available
+        cases_resp = requests.get(f"{BASE}/api/cases/", headers=headers)
+        txn_id = "TXN-001"
+        if cases_resp.status_code == 200 and cases_resp.json().get("cases"):
+            txn_id = cases_resp.json()["cases"][0]["transaction_id"]
+
         # First investigation
-        r1 = requests.post(f"{BASE}/api/investigate/TXN-001",
+        r1 = requests.post(f"{BASE}/api/investigate/{txn_id}",
                            headers=headers, timeout=60)
         assert r1.status_code == 200
         case_id_1 = r1.json()["case_id"]
 
         # Second investigation with same transaction_id
-        r2 = requests.post(f"{BASE}/api/investigate/TXN-001",
+        r2 = requests.post(f"{BASE}/api/investigate/{txn_id}",
                            headers=headers, timeout=60)
         assert r2.status_code == 200
         case_id_2 = r2.json()["case_id"]

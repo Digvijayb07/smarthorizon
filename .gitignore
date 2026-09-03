@@ -51,6 +51,7 @@ pyrightconfig.json
 # ML Models & Large Binary Files  (commit configs/metadata, not binaries)
 # -----------------------------------------------------------------------------
 *.pkl
+!backend/fraud_model.pkl
 *.joblib
 *.h5
 *.model
@@ -131,3 +132,8 @@ backend/drivematerial/drive_material/Data/paysim_account_customer_mapping.csv
 # Generic large binary/data formats
 *.csv.gz
 *.parquet
+
+.output/
+.wrangler/
+frontend/.output/
+frontend/.wrangler/

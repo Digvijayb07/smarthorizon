@@ -16,10 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 BASE = "http://127.0.0.1:8000"
 
 
-def _login():
-    r = requests.post(f"{BASE}/api/auth/login", json={
-        "email": "marcus.johnson@smarthorizon.ai", "password": "demo-password"
-    })
+def _login(email="marcus.johnson@smarthorizon.ai", password="demo-password"):
+    r = requests.post(f"{BASE}/api/auth/login", json={"email": email, "password": password})
     assert r.status_code == 200
     return r.json()["access_token"]
 
