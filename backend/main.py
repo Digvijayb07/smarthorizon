@@ -49,13 +49,13 @@ app = FastAPI(
 )
 
 # CORS — environment-driven, never wildcard + credentials
-_cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
+_cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:8080,http://localhost:5173,http://localhost:3000,http://127.0.0.1:8080")
 cors_origins = [origin.strip() for origin in _cors_raw.split(",") if origin.strip()]
 
 # Safety: if someone accidentally sets *, replace with explicit origins
 if "*" in cors_origins:
     print("[CORS WARNING] Wildcard '*' is not safe with credentials. Using explicit origins instead.")
-    cors_origins = ["http://localhost:5173", "http://localhost:3000"]
+    cors_origins = ["http://localhost:8080", "http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:8080"]
 
 app.add_middleware(
     CORSMiddleware,
