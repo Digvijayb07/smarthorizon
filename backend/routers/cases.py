@@ -14,32 +14,34 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from database import get_db, log_audit, init_db
+from auth import CurrentUser, current_user, require_roles
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(current_user)])
 
 # Initialize tables on import
 init_db()
 
+_VALID_STATUSES = {"OPEN", "MONITORING", "ESCALATED", "CLOSED"}
+
 
 # ── Pydantic Models ────────────────────────────────────────────────────────────
 class CaseCreate(BaseModel):
-    transaction_id:    str
-    risk_score:        float
-    risk_band:         str
-    recommended_action:str
-    investigation_data:Optional[dict] = None   # full evidence package JSON
+    transaction_id: str
+    risk_score: float
+    risk_band: str
+    recommended_action: str
+    investigation_data: Optional[dict] = None
 
 
 class CaseDecision(BaseModel):
-    analyst_id:     str
-    decision:       str   # APPROVE_BLOCK | APPROVE_FLAG | DISMISS | ESCALATE
-    notes:          Optional[str] = ""
+    decision: str  # APPROVE_BLOCK | APPROVE_FLAG | DISMISS | ESCALATE
+    notes: Optional[str] = ""
 
 
 class CaseUpdate(BaseModel):
-    status:              Optional[str] = None
-    investigation_report:Optional[str] = None
-    str_draft:           Optional[str] = None
+    status: Optional[str] = None
+    investigation_report: Optional[str] = None
+    str_draft: Optional[str] = None
 
 
 # ── Helper ────────────────────────────────────────────────────────────────────
@@ -54,14 +56,17 @@ async def list_cases(
     risk_band: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
-    conn: sqlite3.Connection = Depends(get_db)
+    conn: sqlite3.Connection = Depends(get_db),
+    _: CurrentUser = Depends(current_user),
 ):
     """List all cases with optional filters. Used by the Case Queue dashboard."""
-    query  = "SELECT * FROM cases"
-    params = []
-    wheres = []
+    query = "SELECT * FROM cases"
+    params: list = []
+    wheres: list[str] = []
 
     if status:
+        if status not in _VALID_STATUSES:
+            raise HTTPException(400, f"Invalid status filter. Must be one of: {sorted(_VALID_STATUSES)}")
         wheres.append("status = ?")
         params.append(status)
     if risk_band:
@@ -78,9 +83,9 @@ async def list_cases(
     total = conn.execute("SELECT COUNT(*) FROM cases").fetchone()[0]
 
     return {
-        "cases":  [row_to_dict(r) for r in rows],
-        "total":  total,
-        "limit":  limit,
+        "cases": [row_to_dict(r) for r in rows],
+        "total": total,
+        "limit": limit,
         "offset": offset,
     }
 
@@ -88,34 +93,75 @@ async def list_cases(
 @router.post("/", status_code=201)
 async def create_case(
     body: CaseCreate,
-    conn: sqlite3.Connection = Depends(get_db)
+    user: CurrentUser = Depends(require_roles("investigator", "manager", "administrator")),
+    conn: sqlite3.Connection = Depends(get_db),
 ):
     """Create a new investigation case from an alert."""
     case_id = f"FC-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
-    now     = datetime.utcnow().isoformat()
+    now = datetime.utcnow().isoformat()
 
-    conn.execute("""
-        INSERT INTO cases
+    # Validate transaction exists
+    transaction = conn.execute(
+        "SELECT 1 FROM transactions WHERE transaction_id = ?", (body.transaction_id,)
+    ).fetchone()
+    if not transaction:
+        raise HTTPException(422, "transaction_id must reference an existing transaction")
+
+    # Idempotency: reject duplicate case for same transaction
+    existing = conn.execute(
+        "SELECT case_id FROM cases WHERE transaction_id = ?", (body.transaction_id,)
+    ).fetchone()
+    if existing:
+        raise HTTPException(409, f"Case already exists for transaction: {existing['case_id']}")
+
+    if body.risk_band not in {"LOW", "MEDIUM", "HIGH", "CRITICAL"}:
+        raise HTTPException(422, "risk_band must be LOW, MEDIUM, HIGH, or CRITICAL")
+
+    conn.execute(
+        """INSERT INTO cases
           (case_id, transaction_id, status, risk_score, risk_band,
-           recommended_action, opened_at, updated_at)
-        VALUES (?,?,?,?,?,?,?,?)
-    """, (
-        case_id, body.transaction_id, "OPEN",
-        body.risk_score, body.risk_band, body.recommended_action,
-        now, now
-    ))
+           recommended_action, analyst_id, opened_at, updated_at)
+          VALUES (?,?,?,?,?,?,?,?,?)""",
+        (
+            case_id, body.transaction_id, "OPEN",
+            body.risk_score, body.risk_band, body.recommended_action,
+            user.email, now, now,
+        ),
+    )
     conn.commit()
 
-    log_audit(conn, case_id, "CASE_OPENED",
+    log_audit(conn, case_id, "CASE_OPENED", actor=user.email,
               details=f"risk_score={body.risk_score}, band={body.risk_band}")
 
     return {"case_id": case_id, "status": "OPEN", "opened_at": now}
 
 
+@router.get("/stats/summary")
+async def case_stats(
+    conn: sqlite3.Connection = Depends(get_db),
+    _: CurrentUser = Depends(current_user),
+):
+    """Dashboard stats — case counts by status and risk band."""
+    by_status = conn.execute(
+        "SELECT status, COUNT(*) as count FROM cases GROUP BY status"
+    ).fetchall()
+    by_band = conn.execute(
+        "SELECT risk_band, COUNT(*) as count FROM cases GROUP BY risk_band"
+    ).fetchall()
+    total = conn.execute("SELECT COUNT(*) FROM cases").fetchone()[0]
+
+    return {
+        "total": total,
+        "by_status": [dict(r) for r in by_status],
+        "by_band": [dict(r) for r in by_band],
+    }
+
+
 @router.get("/{case_id}")
 async def get_case(
     case_id: str,
-    conn: sqlite3.Connection = Depends(get_db)
+    conn: sqlite3.Connection = Depends(get_db),
+    _: CurrentUser = Depends(current_user),
 ):
     """Get full case details including linked transaction."""
     case = conn.execute(
@@ -130,23 +176,21 @@ async def get_case(
     # Attach transaction data
     txn = conn.execute(
         "SELECT * FROM transactions WHERE transaction_id = ?",
-        (case_dict["transaction_id"],)
+        (case_dict["transaction_id"],),
     ).fetchone()
     case_dict["transaction"] = row_to_dict(txn)
 
     # Attach sender customer
     if txn and txn["sender_id"]:
         sender = conn.execute(
-            "SELECT * FROM customers WHERE customer_id = ?",
-            (txn["sender_id"],)
+            "SELECT * FROM customers WHERE customer_id = ?", (txn["sender_id"],)
         ).fetchone()
         case_dict["sender"] = row_to_dict(sender)
 
     # Attach receiver customer
     if txn and txn["receiver_id"]:
         receiver = conn.execute(
-            "SELECT * FROM customers WHERE customer_id = ?",
-            (txn["receiver_id"],)
+            "SELECT * FROM customers WHERE customer_id = ?", (txn["receiver_id"],)
         ).fetchone()
         case_dict["receiver"] = row_to_dict(receiver)
 
@@ -157,11 +201,12 @@ async def get_case(
 async def submit_decision(
     case_id: str,
     body: CaseDecision,
-    conn: sqlite3.Connection = Depends(get_db)
+    user: CurrentUser = Depends(require_roles("manager", "administrator")),
+    conn: sqlite3.Connection = Depends(get_db),
 ):
     """
     Analyst submits a decision on a case.
-    This is the human-in-the-loop step — AI recommends, human decides.
+    analyst_id is derived from the authenticated user — never accepted from client input.
     """
     case = conn.execute(
         "SELECT * FROM cases WHERE case_id = ?", (case_id,)
@@ -173,34 +218,35 @@ async def submit_decision(
     if body.decision not in valid_decisions:
         raise HTTPException(400, f"Invalid decision. Must be one of: {valid_decisions}")
 
-    now    = datetime.utcnow().isoformat()
+    now = datetime.utcnow().isoformat()
     status = {
         "APPROVE_BLOCK": "CLOSED",
-        "APPROVE_FLAG":  "MONITORING",
-        "DISMISS":       "CLOSED",
-        "ESCALATE":      "ESCALATED",
+        "APPROVE_FLAG": "MONITORING",
+        "DISMISS": "CLOSED",
+        "ESCALATE": "ESCALATED",
     }[body.decision]
 
-    conn.execute("""
-        UPDATE cases
+    conn.execute(
+        """UPDATE cases
         SET analyst_id=?, analyst_decision=?, analyst_notes=?,
             status=?, updated_at=?, closed_at=?
-        WHERE case_id=?
-    """, (
-        body.analyst_id, body.decision, body.notes,
-        status, now, now if status == "CLOSED" else None,
-        case_id
-    ))
+        WHERE case_id=?""",
+        (
+            user.email, body.decision, body.notes,
+            status, now, now if status == "CLOSED" else None,
+            case_id,
+        ),
+    )
     conn.commit()
 
     log_audit(conn, case_id, "ANALYST_DECISION",
-              actor=body.analyst_id,
+              actor=user.email,
               details=f"decision={body.decision}, notes={body.notes}")
 
     return {
-        "case_id":  case_id,
+        "case_id": case_id,
         "decision": body.decision,
-        "status":   status,
+        "status": status,
         "decided_at": now,
     }
 
@@ -209,44 +255,36 @@ async def submit_decision(
 async def update_case(
     case_id: str,
     body: CaseUpdate,
-    conn: sqlite3.Connection = Depends(get_db)
+    user: CurrentUser = Depends(require_roles("manager", "administrator")),
+    conn: sqlite3.Connection = Depends(get_db),
 ):
-    """Update case fields (report, STR draft, status)."""
-    updates = []
-    params  = []
+    """Update case fields (report, STR draft, status). Uses `is not None` to allow clearing fields."""
+    updates: list[str] = []
+    params: list = []
 
-    if body.status:
-        updates.append("status = ?");              params.append(body.status)
-    if body.investigation_report:
-        updates.append("investigation_report = ?"); params.append(body.investigation_report)
-    if body.str_draft:
-        updates.append("str_draft = ?");           params.append(body.str_draft)
+    if body.status is not None:
+        if body.status not in _VALID_STATUSES:
+            raise HTTPException(422, f"Invalid status. Must be one of: {sorted(_VALID_STATUSES)}")
+        updates.append("status = ?")
+        params.append(body.status)
+    if body.investigation_report is not None:
+        updates.append("investigation_report = ?")
+        params.append(body.investigation_report)
+    if body.str_draft is not None:
+        updates.append("str_draft = ?")
+        params.append(body.str_draft)
 
     if not updates:
         raise HTTPException(400, "No fields to update")
 
-    updates.append("updated_at = ?"); params.append(datetime.utcnow().isoformat())
+    updates.append("updated_at = ?")
+    params.append(datetime.utcnow().isoformat())
     params.append(case_id)
 
     conn.execute(f"UPDATE cases SET {', '.join(updates)} WHERE case_id = ?", params)
     conn.commit()
 
+    log_audit(conn, case_id, "CASE_UPDATED", actor=user.email,
+              details=f"Updated fields: {[u.split(' =')[0] for u in updates[:-1]]}")
+
     return {"case_id": case_id, "updated": True}
-
-
-@router.get("/stats/summary")
-async def case_stats(conn: sqlite3.Connection = Depends(get_db)):
-    """Dashboard stats — case counts by status and risk band."""
-    by_status = conn.execute("""
-        SELECT status, COUNT(*) as count FROM cases GROUP BY status
-    """).fetchall()
-    by_band = conn.execute("""
-        SELECT risk_band, COUNT(*) as count FROM cases GROUP BY risk_band
-    """).fetchall()
-    total = conn.execute("SELECT COUNT(*) FROM cases").fetchone()[0]
-
-    return {
-        "total":    total,
-        "by_status":[dict(r) for r in by_status],
-        "by_band":  [dict(r) for r in by_band],
-    }

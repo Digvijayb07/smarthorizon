@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import init_db
+from auth import LoginRequest, authenticate
 
 load_dotenv()
 
@@ -47,24 +48,36 @@ app = FastAPI(
     version="2.0.0",
 )
 
-# CORS
+# CORS — environment-driven, never wildcard + credentials
+_cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
+cors_origins = [origin.strip() for origin in _cors_raw.split(",") if origin.strip()]
+
+# Safety: if someone accidentally sets *, replace with explicit origins
+if "*" in cors_origins:
+    print("[CORS WARNING] Wildcard '*' is not safe with credentials. Using explicit origins instead.")
+    cors_origins = ["http://localhost:5173", "http://localhost:3000"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Routers
 from routers import cases, score, graph, investigate, reports, audit
 
-app.include_router(cases.router,       prefix="/api/cases",       tags=["Cases"])
-app.include_router(score.router,       prefix="/api/score",       tags=["Score Agent"])
-app.include_router(graph.router,       prefix="/api/graph",       tags=["Graph Agent"])
+@app.post("/api/auth/login")
+def login(body: LoginRequest):
+    return authenticate(body)
+
+app.include_router(cases.router, prefix="/api/cases", tags=["Cases"])
+app.include_router(score.router, prefix="/api/score", tags=["Score Agent"])
+app.include_router(graph.router, prefix="/api/graph", tags=["Graph Agent"])
 app.include_router(investigate.router, prefix="/api/investigate", tags=["Investigation"])
-app.include_router(reports.router,     prefix="/api/reports",     tags=["Reports"])
-app.include_router(audit.router,       prefix="/api/audit",       tags=["Audit"])
+app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
+app.include_router(audit.router, prefix="/api/audit", tags=["Audit"])
 
 @app.get("/")
 def root():
@@ -72,12 +85,12 @@ def root():
         "service": "Horizon Investigation API",
         "status": "online",
         "model_loaded": app_state.model is not None,
-        "version": "2.0.0"
+        "version": "2.0.0",
     }
 
 @app.get("/health")
 def health():
     return {
         "status": "ok",
-        "model": "loaded" if app_state.model is not None else "not loaded"
+        "model": "loaded" if app_state.model is not None else "not loaded",
     }

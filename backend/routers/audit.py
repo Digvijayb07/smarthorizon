@@ -8,15 +8,17 @@ Used for the Audit Log tab in the dashboard.
 import sqlite3
 from fastapi import APIRouter, Depends
 from database import get_db
+from auth import current_user, CurrentUser
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(current_user)])
 
 
 @router.get("/")
 async def get_audit_log(
     case_id: str | None = None,
-    limit:   int = 100,
-    conn:    sqlite3.Connection = Depends(get_db)
+    limit: int = 100,
+    conn: sqlite3.Connection = Depends(get_db),
+    _: CurrentUser = Depends(current_user),
 ):
     """Get audit log entries, optionally filtered by case."""
     if case_id:

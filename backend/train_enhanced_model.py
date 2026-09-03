@@ -24,6 +24,7 @@ import xgboost as xgb
 import shap
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, roc_auc_score, f1_score, confusion_matrix
+from features import FEATURE_COLS, engineer_features as shared_engineer_features, training_thresholds
 
 DATA_DIR    = "drivematerial/drive_material/Data"
 MODEL_OUT   = "fraud_model.pkl"
@@ -73,65 +74,7 @@ def load_combined_data():
 
 def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     print("[FEAT] Engineering domain features...")
-    fe = df.copy()
-
-    type_map = {"CASH_OUT": 0, "PAYMENT": 1, "CASH_IN": 2, "TRANSFER": 3, "DEBIT": 4}
-    fe["type_encoded"] = fe["type"].map(type_map).fillna(5).astype(int)
-
-    fe["balance_diff_orig"]  = fe["oldbalanceOrg"]  - fe["newbalanceOrig"]
-    fe["balance_diff_dest"]  = fe["newbalanceDest"] - fe["oldbalanceDest"]
-
-    fe["error_balance_orig"] = np.abs(fe["oldbalanceOrg"] - fe["newbalanceOrig"] - fe["amount"])
-    fe["error_balance_dest"] = np.abs(fe["oldbalanceDest"] + fe["amount"] - fe["newbalanceDest"])
-
-    fe["amount_to_orig_ratio"] = fe["amount"] / (fe["oldbalanceOrg"] + 1.0)
-    fe["amount_to_dest_ratio"] = fe["amount"] / (fe["oldbalanceDest"] + 1.0)
-
-    fe["orig_balance_zeroed"]  = (fe["newbalanceOrig"] == 0).astype(int)
-    fe["dest_was_zero"]        = (fe["oldbalanceDest"] == 0).astype(int)
-
-    amount_p90 = fe["amount"].quantile(0.90)
-    amount_p99 = fe["amount"].quantile(0.99)
-    fe["is_large_amount"]    = (fe["amount"] > amount_p90).astype(int)
-    fe["is_very_large"]      = (fe["amount"] > amount_p99).astype(int)
-
-    fe["step_mod_24"]  = fe["step"] % 24
-    fe["is_night_txn"] = ((fe["step_mod_24"] >= 22) | (fe["step_mod_24"] <= 5)).astype(int)
-
-    fe["is_transfer"]  = (fe["type"] == "TRANSFER").astype(int)
-    fe["is_cashout"]   = (fe["type"] == "CASH_OUT").astype(int)
-    fe["dest_unchanged"] = (fe["balance_diff_dest"] == 0).astype(int)
-
-    # Ratio of transaction amount to remaining destination balance
-    fe["amount_dest_balance_ratio"] = fe["amount"] / (fe["newbalanceDest"] + 1.0)
-
-    return fe
-
-FEATURE_COLS = [
-    "step",
-    "type_encoded",
-    "amount",
-    "oldbalanceOrg",
-    "newbalanceOrig",
-    "oldbalanceDest",
-    "newbalanceDest",
-    "balance_diff_orig",
-    "balance_diff_dest",
-    "error_balance_orig",
-    "error_balance_dest",
-    "amount_to_orig_ratio",
-    "amount_to_dest_ratio",
-    "orig_balance_zeroed",
-    "dest_was_zero",
-    "is_large_amount",
-    "is_very_large",
-    "step_mod_24",
-    "is_night_txn",
-    "is_transfer",
-    "is_cashout",
-    "dest_unchanged",
-    "amount_dest_balance_ratio"
-]
+    return shared_engineer_features(df, training_thresholds(df))
 
 def main():
     df = load_combined_data()
@@ -188,6 +131,7 @@ def main():
     metadata = {
         "model_file": MODEL_OUT,
         "feature_columns": FEATURE_COLS,
+        "feature_thresholds": training_thresholds(df),
         "target_column": "isFraud",
         "threshold": 0.5,
         "metrics": {

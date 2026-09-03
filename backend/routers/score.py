@@ -1,158 +1,200 @@
 """
-scoreAgent Router -- /api/score/analyze
-=======================================
-Takes a raw transaction, runs XGBoost + SHAP,
-returns risk score + explainability breakdown.
+Score Router — /api/score
+=========================
+Single entry point for fraud risk scoring with centralized severity overrides.
 
-This is Agent 1 in the 4-agent pipeline.
+This is Agent 1 in the 4-agent pipeline. All scoring flows (direct score
+and investigation) MUST go through the functions here to ensure consistency.
 """
 
-import pickle
-import json
+import math
 import shap
-import numpy as np
 import pandas as pd
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
+
+
+from auth import current_user, CurrentUser
+from features import FEATURE_COLS, TYPE_MAP, engineer_features
 from state import app_state
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(current_user)])
+
+
+# ── Centralized severity override configuration ─────────────────────────────
+# Both /score/analyze and /investigate must use this single source of truth.
+SEVERITY_OVERRIDES = {
+    "CRITICAL": {"floor": 0.85, "label": "CRITICAL alert floor applied (85%)"},
+    "HIGH":     {"floor": 0.68, "label": "HIGH alert floor applied (68%)"},
+}
+
+
+# ── Request / Response schemas ──────────────────────────────────────────────
 
 class TransactionInput(BaseModel):
-    transaction_id:   str
-    step:             int   = 1
-    type:             str   = "TRANSFER"
-    amount:           float
-    nameOrig:         str   = "UNKNOWN"
-    oldbalanceOrg:    float = 0.0
-    newbalanceOrig:   float = 0.0
-    nameDest:         str   = "UNKNOWN"
-    oldbalanceDest:   float = 0.0
-    newbalanceDest:   float = 0.0
-    # Optional enrichment fields
-    is_new_payee:     Optional[bool]  = False
-    is_vpn:           Optional[bool]  = False
-    location_city:    Optional[str]   = "Unknown"
-    device_id:        Optional[str]   = None
-    ip_address:       Optional[str]   = None
-    scenario_type:    Optional[str]   = None
-    fraud_reason:     Optional[str]   = None
-    severity:         Optional[str]   = "NONE"
+    model_config = ConfigDict(extra="forbid")
+    transaction_id:   str = Field(min_length=1, max_length=128)
+    step:             int = Field(default=1, ge=0)
+    type:             str = "TRANSFER"
+    amount:           float = Field(ge=0, allow_inf_nan=False)
+    nameOrig:         str = "UNKNOWN"
+    oldbalanceOrg:    float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    newbalanceOrig:   float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    nameDest:         str = "UNKNOWN"
+    oldbalanceDest:   float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    newbalanceDest:   float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    is_new_payee:     Optional[bool] = False
+    is_vpn:           Optional[bool] = False
+    location_city:    Optional[str]  = "Unknown"
+    device_id:        Optional[str]  = None
+    ip_address:       Optional[str]  = None
+    scenario_type:    Optional[str]  = None
+    fraud_reason:     Optional[str]  = None
+
 
 class ScoreResponse(BaseModel):
     transaction_id: str
-    risk_score:     float       # 0-100
-    risk_band:      str         # LOW / MEDIUM / HIGH / CRITICAL
-    probability:    float       # raw model probability
-    recommended_action: str     # ALLOW / MONITOR / FLAG / BLOCK
-    top_factors:    list
-    shap_values:    dict
-    model_version:  str
+    risk_score: float
+    risk_band: str
+    model_probability: float
+    probability: float
+    recommended_action: str
+    top_factors: list
+    shap_values: dict
+    rule_adjustments: list
+    model_version: str
 
-FEATURE_COLS = [
-    "step", "type_encoded", "amount",
-    "oldbalanceOrg", "newbalanceOrig", "oldbalanceDest", "newbalanceDest",
-    "balance_diff_orig", "balance_diff_dest",
-    "error_balance_orig", "error_balance_dest",
-    "amount_to_orig_ratio", "amount_to_dest_ratio",
-    "orig_balance_zeroed", "dest_was_zero",
-    "is_large_amount", "is_very_large",
-    "step_mod_24", "is_night_txn",
-    "is_transfer", "is_cashout", "dest_unchanged",
-    "amount_dest_balance_ratio"
-]
 
-TYPE_MAP = {"CASH_OUT": 0, "PAYMENT": 1, "CASH_IN": 2, "TRANSFER": 3, "DEBIT": 4}
+# ── Internal helpers ────────────────────────────────────────────────────────
 
 def _engineer(txn: dict) -> pd.DataFrame:
-    df = pd.DataFrame([txn])
-    df["type_encoded"]         = df["type"].map(TYPE_MAP).fillna(3).astype(int)
-    df["balance_diff_orig"]    = df["oldbalanceOrg"]  - df["newbalanceOrig"]
-    df["balance_diff_dest"]    = df["newbalanceDest"] - df["oldbalanceDest"]
-    df["error_balance_orig"]   = (df["oldbalanceOrg"] - df["newbalanceOrig"] - df["amount"]).abs()
-    df["error_balance_dest"]   = (df["oldbalanceDest"] + df["amount"] - df["newbalanceDest"]).abs()
-    df["amount_to_orig_ratio"] = df["amount"] / (df["oldbalanceOrg"] + 1.0)
-    df["amount_to_dest_ratio"] = df["amount"] / (df["oldbalanceDest"] + 1.0)
-    df["orig_balance_zeroed"]  = (df["newbalanceOrig"] == 0).astype(int)
-    df["dest_was_zero"]        = (df["oldbalanceDest"] == 0).astype(int)
+    """Engineer features using persisted thresholds from model_metadata.json."""
+    metadata = app_state.metadata or {}
+    thresholds = metadata.get("feature_thresholds")
+    if not thresholds:
+        raise HTTPException(503, "Model metadata not loaded; missing feature_thresholds.")
+    return engineer_features(pd.DataFrame([txn]), thresholds)
 
-    df["is_large_amount"]      = (df["amount"] > 200_000).astype(int)
-    df["is_very_large"]        = (df["amount"] > 1_000_000).astype(int)
-    df["step_mod_24"]          = df["step"] % 24
-    df["is_night_txn"]         = ((df["step_mod_24"] >= 22) | (df["step_mod_24"] <= 5)).astype(int)
-    df["is_transfer"]          = (df["type"] == "TRANSFER").astype(int)
-    df["is_cashout"]           = (df["type"] == "CASH_OUT").astype(int)
-    df["dest_unchanged"]       = (df["balance_diff_dest"] == 0).astype(int)
-    df["amount_dest_balance_ratio"] = df["amount"] / (df["newbalanceDest"] + 1.0)
-    return df[FEATURE_COLS]
+
+def _validate_transaction_input(txn: dict) -> dict:
+    """Validate and sanitize transaction inputs before scoring."""
+    amount = txn.get("amount", 0)
+    if not math.isfinite(amount) or amount < 0:
+        raise HTTPException(422, "Transaction amount must be a finite, non-negative number.")
+
+    # Validate numeric balances
+    for field in ["oldbalanceOrg", "newbalanceOrig", "oldbalanceDest", "newbalanceDest"]:
+        val = txn.get(field, 0)
+        if not math.isfinite(val) or val < 0:
+            raise HTTPException(422, f"Field '{field}' must be a finite, non-negative number.")
+
+    # Validate transaction type
+    type_val = txn.get("type", "TRANSFER")
+    if type_val not in TYPE_MAP and type_val != "UNKNOWN_RAIL":
+        pass  # Will be mapped to -1 by engineer_features
+
+    return txn
+
+
+def _apply_severity_override(proba: float, severity: str | None) -> tuple[float, str | None]:
+    """Apply centralized severity floor. Returns (new_proba, adjustment_label_or_None)."""
+    if severity and severity in SEVERITY_OVERRIDES:
+        cfg = SEVERITY_OVERRIDES[severity]
+        if proba < cfg["floor"]:
+            return cfg["floor"], cfg["label"]
+    return proba, None
+
+
+def _band_from_proba(proba: float) -> str:
+    """Map probability to risk band."""
+    if proba < 0.30:
+        return "LOW"
+    elif proba < 0.60:
+        return "MEDIUM"
+    elif proba < 0.80:
+        return "HIGH"
+    else:
+        return "CRITICAL"
+
 
 def _action_from_band(band: str) -> str:
-    return {
-        "LOW":      "ALLOW",
-        "MEDIUM":   "MONITOR",
-        "HIGH":     "FLAG",
-        "CRITICAL": "BLOCK",
-    }.get(band, "MONITOR")
+    return {"LOW": "ALLOW", "MEDIUM": "MONITOR", "HIGH": "FLAG", "CRITICAL": "BLOCK"}.get(band, "MONITOR")
 
-@router.post("/analyze", response_model=ScoreResponse)
-async def analyze_transaction(txn: TransactionInput):
+
+def score_transaction(transaction: dict) -> dict:
     """
     scoreAgent: Run fraud risk scoring on a single transaction.
     Returns risk score 0-100 with SHAP feature attribution.
+
+    This is the SINGLE scoring function used by both /score/analyze and /investigate.
+    All severity overrides happen here — never duplicated elsewhere.
     """
     if app_state.model is None:
         raise HTTPException(503, "Fraud model not loaded. Run train_enhanced_model.py first.")
 
-    model    = app_state.model
+    model = app_state.model
     metadata = app_state.metadata or {}
 
+    txn = _validate_transaction_input(transaction)
+
     try:
-        X = _engineer(txn.model_dump())
-    except Exception as e:
-        raise HTTPException(400, f"Feature engineering failed: {str(e)}")
+        X = _engineer(txn)
+    except (TypeError, ValueError) as e:
+        raise HTTPException(422, f"Feature engineering failed: {str(e)}") from e
 
-    proba = float(model.predict_proba(X)[0, 1])
+    # 1. Get raw model probability (before any override)
+    model_probability = float(model.predict_proba(X)[0, 1])
+    proba = model_probability
 
-    # Severity/Scenario hybrid calibration
-    # If the transaction triggered a high/critical scenario alert, ensure high sensitivity
-    if txn.severity == "CRITICAL" and proba < 0.80:
-        proba = max(proba, 0.85)
-    elif txn.severity == "HIGH" and proba < 0.60:
-        proba = max(proba, 0.68)
+    # 2. Apply centralized severity override
+    rule_adjustments: list[str] = []
+    proba, override_label = _apply_severity_override(proba, txn.get("severity"))
+    if override_label:
+        rule_adjustments.append(override_label)
 
-    if proba < 0.30:
-        band = "LOW"
-    elif proba < 0.60:
-        band = "MEDIUM"
-    elif proba < 0.80:
-        band = "HIGH"
-    else:
-        band = "CRITICAL"
+    # 3. Compute band and action from (possibly overridden) probability
+    band = _band_from_proba(proba)
+    action = _action_from_band(band)
 
-    explainer   = shap.TreeExplainer(model)
-    shap_vals   = explainer.shap_values(X)[0]
-    shap_dict   = {f: round(float(v), 4) for f, v in zip(FEATURE_COLS, shap_vals)}
+    # 4. SHAP explanation is always from the raw model (pre-override)
+    #    This ensures the explanation reflects what the model actually learned,
+    #    while the override is clearly flagged in rule_adjustments.
+    explainer = shap.TreeExplainer(model)
+    shap_vals = explainer.shap_values(X)[0]
+    shap_dict = {f: round(float(v), 4) for f, v in zip(FEATURE_COLS, shap_vals)}
 
     feat_desc = metadata.get("feature_descriptions", {})
     top_factors = sorted(shap_dict.items(), key=lambda x: abs(x[1]), reverse=True)[:5]
     factors_out = [
         {
-            "feature":     k,
-            "shap_value":  v,
-            "impact":      "increases_risk" if v > 0 else "decreases_risk",
+            "feature": k,
+            "shap_value": v,
+            "impact": "increases_risk" if v > 0 else "decreases_risk",
             "description": feat_desc.get(k, k),
         }
         for k, v in top_factors
     ]
 
+    return {
+        "risk_score": round(proba * 100, 1),
+        "model_probability": round(model_probability, 4),
+        "risk_band": band,
+        "probability": round(proba, 4),
+        "recommended_action": action,
+        "top_factors": factors_out,
+        "shap_values": shap_dict,
+        "rule_adjustments": rule_adjustments,
+    }
+
+
+# ── Endpoint ────────────────────────────────────────────────────────────────
+
+@router.post("/analyze", response_model=ScoreResponse)
+async def analyze_transaction(txn: TransactionInput, _: CurrentUser = Depends(current_user)):
+    result = score_transaction(txn.model_dump())
     return ScoreResponse(
-        transaction_id    = txn.transaction_id,
-        risk_score        = round(proba * 100, 1),
-        risk_band         = band,
-        probability       = round(proba, 4),
-        recommended_action= _action_from_band(band),
-        top_factors       = factors_out,
-        shap_values       = shap_dict,
-        model_version     = "xgboost-enhanced-v2.0",
+        transaction_id=txn.transaction_id,
+        model_version="xgboost-enhanced-v2.1",
+        **result,
     )

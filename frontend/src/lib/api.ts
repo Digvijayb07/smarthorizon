@@ -5,9 +5,31 @@
  * FastAPI backend at http://localhost:8000/api.
  *
  * Every function returns typed data matching our investigation types.
+ * All requests include the JWT bearer token from the auth context.
  */
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
+// ── Auth token management ──────────────────────────────────────────────────
+
+let _authToken: string | null = null;
+
+export function setAuthToken(token: string | null) {
+  _authToken = token;
+  if (token) {
+    sessionStorage.setItem("horizon-auth-token", token);
+  } else {
+    sessionStorage.removeItem("horizon-auth-token");
+  }
+}
+
+export function getAuthToken(): string | null {
+  if (_authToken) return _authToken;
+  if (typeof window !== "undefined") {
+    _authToken = sessionStorage.getItem("horizon-auth-token");
+  }
+  return _authToken;
+}
 
 // ── Generic fetch helper ─────────────────────────────────────────────────────
 
@@ -16,13 +38,27 @@ async function apiFetch<T>(
   options?: RequestInit,
 ): Promise<T> {
   const url = `${API_BASE}${path}`;
+  const token = getAuthToken();
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((options?.headers as Record<string, string>) || {}),
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const res = await fetch(url, {
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
     ...options,
+    headers,
   });
+
+  if (res.status === 401) {
+    // Token expired or invalid — clear it
+    setAuthToken(null);
+    throw new Error("Session expired. Please sign in again.");
+  }
 
   if (!res.ok) {
     const body = await res.text().catch(() => "Unknown error");
@@ -49,7 +85,6 @@ export interface BackendCase {
   analyst_notes: string | null;
   investigation_report: string | null;
   str_draft: string | null;
-  // Joined data from get_case
   transaction?: BackendTransaction | null;
   sender?: BackendCustomer | null;
   receiver?: BackendCustomer | null;
@@ -102,31 +137,48 @@ export interface ScoreResponse {
   transaction_id: string;
   risk_score: number;
   risk_band: string;
-  fraud_probability: number;
+  model_probability: number;
+  probability: number;
   recommended_action: string;
-  shap_contributions: Record<string, number>;
-  top_features: Array<{ feature: string; contribution: number }>;
+  top_factors: Array<{
+    feature: string;
+    shap_value: number;
+    impact: string;
+    description: string;
+  }>;
+  shap_values: Record<string, number>;
+  rule_adjustments: string[];
+  model_version: string;
 }
 
 export interface InvestigationResponse {
   case_id: string;
   transaction_id: string;
   risk_score: number;
+  model_probability: number;
   risk_band: string;
   recommended_action: string;
   investigation_report: string;
-  str_required: boolean;
-  str_draft: string | null;
-  agents: {
-    scoreAgent: unknown;
-    contextAgent: unknown;
-    reasonAgent: unknown;
-    decisionAgent: unknown;
+  str_draft: string;
+  ai_generated: boolean;
+  reasoning_source: string;
+  rule_adjustments: string[];
+  graph_context: {
+    nodes: Array<{ id: string; type?: string }>;
+    links: Array<{
+      source: string;
+      target: string;
+      amount: number;
+      transaction_id: string;
+    }>;
+    patterns: Array<{ type: string; description?: string }>;
+    node_count: number;
+    edge_count: number;
   };
 }
 
 export interface AuditLogEntry {
-  id: number;
+  log_id: number;
   case_id: string;
   action: string;
   actor: string;
@@ -142,6 +194,22 @@ export interface DecisionResponse {
 }
 
 // ── API Functions ────────────────────────────────────────────────────────────
+
+/** Login and get auth token */
+export async function login(
+  email: string,
+  password: string,
+): Promise<{ access_token: string; user: { email: string; name: string; role: string } }> {
+  const data = await apiFetch<{
+    access_token: string;
+    user: { email: string; name: string; role: string };
+  }>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+  setAuthToken(data.access_token);
+  return data;
+}
 
 /** List cases with optional filters */
 export function listCases(params?: {
@@ -169,26 +237,30 @@ export function getCaseStats(): Promise<CaseStatsResponse> {
   return apiFetch("/api/cases/stats/summary");
 }
 
-/** Submit analyst decision */
+/** Submit analyst decision (analyst_id derived from server token) */
 export function submitDecision(
   caseId: string,
   decision: string,
-  analystId: string,
   notes?: string,
 ): Promise<DecisionResponse> {
   return apiFetch(`/api/cases/${encodeURIComponent(caseId)}/decision`, {
     method: "POST",
-    body: JSON.stringify({
-      analyst_id: analystId,
-      decision,
-      notes: notes ?? "",
-    }),
+    body: JSON.stringify({ decision, notes: notes ?? "" }),
   });
 }
 
 /** Score a transaction */
-export function scoreTransaction(transactionId: string): Promise<ScoreResponse> {
-  return apiFetch(`/api/score/${encodeURIComponent(transactionId)}`);
+export function scoreTransaction(
+  transactionId: string,
+  amount: number,
+): Promise<ScoreResponse> {
+  return apiFetch("/api/score/analyze", {
+    method: "POST",
+    body: JSON.stringify({
+      transaction_id: transactionId,
+      amount,
+    }),
+  });
 }
 
 /** Run full investigation on a case */
@@ -205,10 +277,13 @@ export interface AuditLogResponse {
 
 /** Get audit log for a case */
 export async function getAuditLog(caseId?: string): Promise<AuditLogEntry[]> {
-  const path = caseId ? `/api/audit/?case_id=${encodeURIComponent(caseId)}` : "/api/audit/";
+  const path = caseId
+    ? `/api/audit/?case_id=${encodeURIComponent(caseId)}`
+    : "/api/audit/";
   const data = await apiFetch<AuditLogResponse | AuditLogEntry[]>(path);
   if (Array.isArray(data)) return data;
-  if (data && Array.isArray((data as AuditLogResponse).entries)) return (data as AuditLogResponse).entries;
+  if (data && Array.isArray((data as AuditLogResponse).entries))
+    return (data as AuditLogResponse).entries;
   return [];
 }
 

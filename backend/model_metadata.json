@@ -26,6 +26,10 @@
     "amount_dest_balance_ratio"
   ],
   "target_column": "isFraud",
+  "feature_thresholds": {
+    "large_amount": 1065449.8470000003,
+    "very_large_amount": 5305972.058500052
+  },
   "threshold": 0.5,
   "metrics": {
     "roc_auc": 0.9994,
