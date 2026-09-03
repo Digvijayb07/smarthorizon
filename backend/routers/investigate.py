@@ -130,7 +130,7 @@ async def _call_gemini_or_fallback(prompt: str, txn: dict, score_result: dict) -
 
             def _generate():
                 response = _gemini_client.models.generate_content(
-                    model="gemini-2.5-flash",
+                    model="gemini-3.6-flash",
                     contents=prompt,
                 )
                 return response.text if response and response.text else None
@@ -287,7 +287,7 @@ async def run_investigation(
         "recommended_action": score_result["recommended_action"],
         "confidence": score_result["probability"],
         "ai_generated": ai_generated,
-        "reasoning_source": "gemini-2.5-flash" if ai_generated else "regulatory-fallback-template",
+        "reasoning_source": "gemini-3.6-flash" if ai_generated else "regulatory-fallback-template",
         "investigated_at": now,
         "audit_logged": False,
     }
