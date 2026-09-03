@@ -72,6 +72,7 @@ app.add_middleware(
 
 # Routers
 from routers import cases, score, graph, investigate, reports, audit
+from routers import ingest
 
 @app.post("/api/auth/login")
 def login(body: LoginRequest):
@@ -83,6 +84,7 @@ app.include_router(graph.router, prefix="/api/graph", tags=["Graph Agent"])
 app.include_router(investigate.router, prefix="/api/investigate", tags=["Investigation"])
 app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
 app.include_router(audit.router, prefix="/api/audit", tags=["Audit"])
+app.include_router(ingest.router, prefix="/api", tags=["Ledger Ingest"])
 
 @app.get("/")
 def root():
@@ -95,7 +97,27 @@ def root():
 
 @app.get("/health")
 def health():
+    """Health endpoint for the Integrations status page."""
+    import httpx
+    ledger_url = os.getenv("LEDGER_URL", "http://localhost:3000")
+    ledger_status = "unknown"
+    ledger_latency_ms = None
+    try:
+        import time
+        t0 = time.time()
+        r = httpx.get(f"{ledger_url}/", timeout=2.0)
+        ledger_latency_ms = round((time.time() - t0) * 1000)
+        ledger_status = "online" if r.status_code < 500 else "degraded"
+    except Exception:
+        ledger_status = "offline"
+
     return {
         "status": "ok",
-        "model": "loaded" if app_state.model is not None else "not loaded",
+        "model": "loaded" if app_state.model is not None else "not_loaded",
+        "version": "2.0.0",
+        "ledger": {
+            "status": ledger_status,
+            "url": ledger_url,
+            "latency_ms": ledger_latency_ms,
+        },
     }
