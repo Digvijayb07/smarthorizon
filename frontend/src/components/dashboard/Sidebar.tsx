@@ -22,6 +22,7 @@ import {
   Sliders,
   Lock,
   History,
+  Landmark,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Mono } from "@/components/landing/shared";
@@ -41,6 +42,7 @@ const roleNavMap: Record<RoleId, NavItem[]> = {
     { id: "cases", label: "Cases", icon: <Briefcase className="size-4" />, href: "/dashboard/cases" },
     { id: "reports", label: "Reports", icon: <FileText className="size-4" />, href: "/dashboard/reports" },
     { id: "audit", label: "Audit Trail", icon: <ClipboardList className="size-4" />, href: "/dashboard/audit" },
+    { id: "bank", label: "Apex Bank Core", icon: <Landmark className="size-4 text-emerald-400" />, href: "/bank" },
   ],
   manager: [
     { id: "dashboard", label: "Dashboard", icon: <Briefcase className="size-4" />, href: "/dashboard" },
@@ -48,6 +50,7 @@ const roleNavMap: Record<RoleId, NavItem[]> = {
     { id: "reports", label: "Reports", icon: <FileText className="size-4" />, href: "/dashboard/reports" },
     { id: "audit", label: "Audit Trail", icon: <ClipboardList className="size-4" />, href: "/dashboard/audit" },
     { id: "users", label: "User Directory", icon: <Users className="size-4" />, href: "/dashboard/users" },
+    { id: "bank", label: "Apex Bank Core", icon: <Landmark className="size-4 text-emerald-400" />, href: "/bank" },
   ],
   administrator: [
     { id: "dashboard", label: "Dashboard", icon: <Briefcase className="size-4" />, href: "/dashboard" },
@@ -55,6 +58,7 @@ const roleNavMap: Record<RoleId, NavItem[]> = {
     { id: "cases", label: "Cases", icon: <Briefcase className="size-4" />, href: "/dashboard/cases" },
     { id: "reports", label: "Reports", icon: <FileText className="size-4" />, href: "/dashboard/reports" },
     { id: "audit", label: "Audit Trail", icon: <ClipboardList className="size-4" />, href: "/dashboard/audit" },
+    { id: "bank", label: "Apex Bank Core", icon: <Landmark className="size-4 text-emerald-400" />, href: "/bank" },
   ],
 };
 

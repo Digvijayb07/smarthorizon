@@ -18,6 +18,7 @@ from typing import Optional
 from auth import current_user, CurrentUser
 from features import FEATURE_COLS, TYPE_MAP, engineer_features
 from state import app_state
+from counterfactual import generate_counterfactual
 
 router = APIRouter(dependencies=[Depends(current_user)])
 
@@ -64,6 +65,7 @@ class ScoreResponse(BaseModel):
     shap_values: dict
     rule_adjustments: list
     model_version: str
+    counterfactual: Optional[dict] = None
 
 
 # ── Internal helpers ────────────────────────────────────────────────────────
@@ -176,6 +178,16 @@ def score_transaction(transaction: dict) -> dict:
         for k, v in top_factors
     ]
 
+    # 5. Counterfactual explanation (what-if analysis from SHAP drivers)
+    counterfactual = generate_counterfactual(
+        transaction=txn,
+        shap_dict=shap_dict,
+        risk_band=band,
+        current_score=round(proba * 100, 1),
+        model=model,
+        metadata=metadata,
+    )
+
     return {
         "risk_score": round(proba * 100, 1),
         "model_probability": round(model_probability, 4),
@@ -185,6 +197,7 @@ def score_transaction(transaction: dict) -> dict:
         "top_factors": factors_out,
         "shap_values": shap_dict,
         "rule_adjustments": rule_adjustments,
+        "counterfactual": counterfactual,
     }
 
 

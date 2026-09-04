@@ -1,6 +1,7 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RiskScore } from "@/types/investigation";
+import type { CounterfactualInsight } from "@/lib/api";
 
 const levelStyle = {
   LOW: "text-risk-low bg-risk-low/10",
@@ -13,13 +14,22 @@ export function RiskIntelligencePanel({
   risk,
   networkRisk,
   networkRiskSummary,
+  counterfactual,
+  mlRiskValue,
+  mlRiskLevel,
 }: {
   risk: RiskScore;
-  networkRisk?: string;
-  networkRiskSummary?: string;
+  networkRisk?: string | undefined;
+  networkRiskSummary?: string | undefined;
+  counterfactual?: CounterfactualInsight | null | undefined;
+  mlRiskValue?: number | undefined;
+  mlRiskLevel?: string | undefined;
 }) {
   const maxContribution = Math.max(...risk.factors.map((factor) => factor.contribution));
   const majorFactors = risk.factors.slice(0, 4);
+
+  const displayMlValue = mlRiskValue != null ? mlRiskValue : risk.value;
+  const displayMlLevel = (mlRiskLevel || risk.level).toUpperCase() as keyof typeof levelStyle;
 
   const netRiskLevel = (networkRisk || "LOW").toUpperCase();
   const netStyle =
@@ -54,11 +64,11 @@ export function RiskIntelligencePanel({
           </span>
           <div className="mt-1.5 flex items-end justify-between">
             <div className="flex items-baseline gap-1.5">
-              <span className="text-3xl font-bold tabular-nums text-foreground">{risk.value}</span>
+              <span className="text-3xl font-bold tabular-nums text-foreground">{displayMlValue}</span>
               <span className="text-xs text-muted-foreground">/ {risk.max}</span>
             </div>
-            <span className={cn("rounded-md border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider font-mono", levelStyle[risk.level])}>
-              {risk.level}
+            <span className={cn("rounded-md border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider font-mono", levelStyle[displayMlLevel] || levelStyle.LOW)}>
+              {displayMlLevel}
             </span>
           </div>
           <span className="mt-1.5 block text-[10px] text-muted-foreground font-mono">XGBoost Feature Attribution</span>
@@ -115,6 +125,35 @@ export function RiskIntelligencePanel({
           ))}
         </ul>
       </div>
+
+      {/* Phase 4: SHAP Counterfactual Explanation */}
+      {counterfactual && (
+        <div className="mt-6 border-t border-border pt-5">
+          <div className="flex items-center justify-between gap-2 mb-2.5">
+            <div className="flex items-center gap-1.5 text-violet">
+              <Sparkles className="size-3.5 text-violet" aria-hidden="true" />
+              <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] font-mono text-violet">
+                Counterfactual Explanation
+              </h3>
+            </div>
+            <span className="rounded-md border border-violet/30 bg-violet/10 px-2 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-violet">
+              {counterfactual.current_band} ➔ {counterfactual.target_band}
+            </span>
+          </div>
+
+          <div className="rounded-xl border border-violet/25 bg-gradient-to-br from-violet/10 via-violet/5 to-transparent p-3.5 shadow-xs">
+            <p className="text-xs font-medium leading-relaxed text-foreground">
+              &ldquo;{counterfactual.explanation}&rdquo;
+            </p>
+            <div className="mt-2.5 flex items-center justify-between text-[10px] font-mono text-muted-foreground border-t border-violet/15 pt-2">
+              <span>Driver: <strong className="text-foreground">{counterfactual.feature_label}</strong></span>
+              {counterfactual.projected_score !== undefined && (
+                <span>Projected Risk: <strong className="text-teal font-semibold">{counterfactual.projected_score}/100</strong></span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

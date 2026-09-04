@@ -73,7 +73,7 @@ app.add_middleware(
 
 # Routers
 from routers import cases, score, graph, investigate, reports, audit, users
-from routers import ingest
+from routers import ingest, simulator
 
 @app.post("/api/auth/login")
 def login(body: LoginRequest):
@@ -87,6 +87,7 @@ app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
 app.include_router(audit.router, prefix="/api/audit", tags=["Audit"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
 app.include_router(ingest.router, prefix="/api", tags=["Ledger Ingest"])
+app.include_router(simulator.router, prefix="/api/simulator", tags=["Banking Simulator"])
 
 @app.get("/")
 def root():

@@ -8,7 +8,7 @@
  * All requests include the JWT bearer token from the auth context.
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_BASE = (import.meta.env["VITE_API_URL"] as string | undefined) || "http://localhost:8000";
 
 // ── Auth token management ──────────────────────────────────────────────────
 
@@ -88,23 +88,56 @@ export interface BackendCase {
   transaction?: BackendTransaction | null;
   sender?: BackendCustomer | null;
   receiver?: BackendCustomer | null;
+  regulatory_clauses?: Record<string, RegulatoryClause> | null | undefined;
+  cited_clauses?: string[] | null | undefined;
+  counterfactual?: CounterfactualInsight | null | undefined;
+  ml_risk_score?: number | null | undefined;
+  ml_risk_band?: string | null | undefined;
+}
+
+export interface CounterfactualInsight {
+  feature: string;
+  feature_label: string;
+  current_value: number | string;
+  counterfactual_value: number | string;
+  current_band: string;
+  target_band: string;
+  explanation: string;
+  projected_score?: number;
+}
+
+export interface RegulatoryClause {
+  code: string;
+  act: string;
+  title: string;
+  summary: string;
+  authority?: string;
+  filing_window?: string;
 }
 
 export interface BackendTransaction {
   transaction_id: string;
-  sender_id: string;
-  receiver_id: string;
+  sender_id?: string | undefined;
+  receiver_id?: string | undefined;
+  sender_account?: string | undefined;
+  receiver_account?: string | undefined;
   amount: number;
-  currency: string;
-  type: string;
-  channel: string;
-  timestamp: string;
-  sender_balance_before: number;
-  sender_balance_after: number;
-  receiver_balance_before: number;
-  receiver_balance_after: number;
-  is_flagged: number;
-  flag_reason: string | null;
+  currency?: string | undefined;
+  type?: string | undefined;
+  channel?: string | undefined;
+  timestamp?: string | undefined;
+  old_balance_orig?: number | undefined;
+  new_balance_orig?: number | undefined;
+  old_balance_dest?: number | undefined;
+  new_balance_dest?: number | undefined;
+  sender_balance_before?: number | undefined;
+  sender_balance_after?: number | undefined;
+  receiver_balance_before?: number | undefined;
+  receiver_balance_after?: number | undefined;
+  is_flagged?: number | undefined;
+  flag_reason?: string | null | undefined;
+  is_vpn?: number | boolean | undefined;
+  [key: string]: unknown;
 }
 
 export interface BackendCustomer {
@@ -149,6 +182,7 @@ export interface ScoreResponse {
   shap_values: Record<string, number>;
   rule_adjustments: string[];
   model_version: string;
+  counterfactual?: CounterfactualInsight | null;
 }
 
 export interface InvestigationResponse {
@@ -163,6 +197,9 @@ export interface InvestigationResponse {
   ai_generated: boolean;
   reasoning_source: string;
   rule_adjustments: string[];
+  counterfactual?: CounterfactualInsight | null;
+  regulatory_clauses?: Record<string, RegulatoryClause> | null;
+  cited_clauses?: string[] | null;
   graph_context: {
     nodes: Array<{ id: string; type?: string }>;
     links: Array<{
@@ -179,6 +216,7 @@ export interface InvestigationResponse {
 
 export interface AuditLogEntry {
   log_id: number;
+  id?: string | number | undefined;
   case_id: string;
   action: string;
   actor: string;
@@ -217,11 +255,11 @@ export async function login(
 
 /** List cases with optional filters */
 export function listCases(params?: {
-  status?: string;
-  risk_band?: string;
-  limit?: number;
-  offset?: number;
-}): Promise<CaseListResponse> {
+  status?: string | undefined;
+  risk_band?: string | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
+} | undefined): Promise<CaseListResponse> {
   const qs = new URLSearchParams();
   if (params?.status) qs.set("status", params.status);
   if (params?.risk_band) qs.set("risk_band", params.risk_band);
@@ -245,7 +283,7 @@ export function getCaseStats(): Promise<CaseStatsResponse> {
 export function submitDecision(
   caseId: string,
   decision: string,
-  notes?: string,
+  notes?: string | undefined,
 ): Promise<DecisionResponse> {
   return apiFetch(`/api/cases/${encodeURIComponent(caseId)}/decision`, {
     method: "POST",
@@ -298,7 +336,11 @@ export function getStrDraft(caseId: string): Promise<{ case_id: string; str_draf
 
 export interface CaseGraphNode {
   id: string;
-  type?: string;
+  type?: string | undefined;
+  role?: string | undefined;
+  suspicious?: boolean | undefined;
+  in_degree?: number | undefined;
+  out_degree?: number | undefined;
   [key: string]: unknown;
 }
 
@@ -384,6 +426,11 @@ export async function updateUserStatus(userId: string, status: string): Promise<
     method: "PATCH",
     body: JSON.stringify({ status }),
   });
+}
+
+/** Fetch authoritative regulatory compliance clauses catalog */
+export function getRegulatoryClauses(): Promise<Record<string, RegulatoryClause>> {
+  return apiFetch<Record<string, RegulatoryClause>>("/api/investigate/regulatory-clauses");
 }
 
 

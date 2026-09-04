@@ -21,12 +21,12 @@ export interface InvestigationGraphProps {
   patterns?: Array<{
     type: string;
     description: string;
-    severity?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | string;
-    count?: number;
-    total_amount?: number;
-  }>;
-  networkRisk?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | string;
-  networkRiskSummary?: string;
+    severity?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | string | undefined;
+    count?: number | undefined;
+    total_amount?: number | undefined;
+  }> | undefined;
+  networkRisk?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | string | undefined;
+  networkRiskSummary?: string | undefined;
 }
 
 const roleLabels: Record<string, { label: string; color: string }> = {
@@ -200,7 +200,8 @@ export function InvestigationGraph({
             {/* Nodes: Interactive Clickable Tokens with compact sizes and clean spacing */}
             {nodes.map((node, i) => {
               const isSelected = selectedNodeId === node.id;
-              const roleMeta = roleLabels[node.role || ""] || (node.suspicious ? roleLabels.ORIGIN : roleLabels.BENEFICIARY);
+              const defaultRole = node.suspicious ? roleLabels["ORIGIN"]! : roleLabels["BENEFICIARY"]!;
+              const roleMeta = (node.role && roleLabels[node.role]) ? roleLabels[node.role]! : defaultRole;
 
               return (
                 <div
@@ -270,7 +271,7 @@ export function InvestigationGraph({
 
               // Wave stagger offsets along the line (36% to 64%) so multiple transfers between columns don't collide
               const staggerPositions = [0.38, 0.58, 0.46, 0.66, 0.52];
-              const t = staggerPositions[edgeIdx % staggerPositions.length];
+              const t = staggerPositions[edgeIdx % staggerPositions.length] ?? 0.5;
               const labelX = a.x + (b.x - a.x) * t;
               const labelY = a.y + (b.y - a.y) * t;
 

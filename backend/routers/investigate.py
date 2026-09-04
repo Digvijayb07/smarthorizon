@@ -27,6 +27,7 @@ from database import get_db, log_audit
 from state import app_state
 from auth import current_user, CurrentUser
 from routers.score import score_transaction, _band_from_proba, _action_from_band
+from regulatory import REGULATORY_CLAUSES, extract_cited_clauses, format_clauses_for_prompt
 
 router = APIRouter(dependencies=[Depends(current_user)])
 
@@ -70,6 +71,8 @@ def _build_llm_prompt(txn: dict, score_result: dict, graph_context: dict | None 
     ]
     mules_text = ", ".join(mule_accounts[:6]) if mule_accounts else "None identified beyond primary endpoints"
 
+    clauses_json = format_clauses_for_prompt()
+
     return f"""You are a Lead Financial Crime Investigator at an Indian Scheduled Commercial Bank.
 Analyze this alert and write a clear, audit-ready investigation report synthesizing both Machine Learning features and NetworkX Multi-Hop Graph intelligence.
 
@@ -100,22 +103,22 @@ NETWORK GRAPH & RELATIONAL TOPOLOGY (NetworkX):
 - Detected Topological Patterns:
 {patterns_text}
 
-REGULATORY GUIDANCE:
-- RBI Master Direction - Fraud Risk Management in Commercial Banks 2024
-- PMLA 2002 Section 12 (Statutory reporting of suspicious transactions / structuring to FIU-IND)
-- NPCI UPI Circular No. 138 (Mule and rapid fund velocity monitoring)
+REGULATORY COMPLIANCE CITATION CONTRACT:
+You MUST cite specific statutory clause IDs inline next to each finding in Section 3, in the exact bracketed format [CLAUSE_ID].
+Do NOT cite any clause outside the available catalog:
+{clauses_json}
 
 Please provide a structured report with these exact 5 sections:
 1. EXECUTIVE SUMMARY: Direct summary of the transaction, composite risk, and whether it represents an isolated anomaly or an active multi-account syndicate. Explicitly cite the Network Risk level ({network_risk}).
 2. SUSPICIOUS INDICATORS: Key signals observed (money flow, balance depletion, SHAP feature drivers, and topological graph patterns like structuring or mule fan-out).
-3. REGULATORY COMPLIANCE ASSESSMENT: Applicable RBI/PMLA clauses and obligations (specifically address PMLA Section 12 for structuring/reporting deadline and NPCI Circular 138 for mule rings).
+3. REGULATORY COMPLIANCE ASSESSMENT: Applicable statutory obligations citing clause IDs inline in [CLAUSE_ID] format (e.g. [PMLA_S12], [PMLA_S3], [RBI_MD_KYC_2016_PARA_23], [RBI_MD_KYC_2016_PARA_37], [RBI_FRM_2024_CIRCULAR], [NPCI_UPI_2023_PARA_5], [NPCI_OC_138_MULE]).
 4. RECOMMENDED ACTION & JUSTIFICATION: Action (BLOCK / FLAG FOR MONITORING / DISMISS) with explicit rationale citing both ML and Network signals.
 5. ANALYST ACTION ITEMS: Concrete verification checklist for the human analyst, including freezing implicated mule accounts.
 """
 
 
 def _generate_fallback_report(txn: dict, score_result: dict, graph_context: dict | None = None) -> str:
-    """Deterministic, high-quality regulatory investigation template if API is offline."""
+    """Deterministic, high-quality regulatory investigation template with inline clause citations."""
     scenario = txn.get("scenario_type", "SUSPICIOUS_VELOCITY").replace("_", " ").title()
     amount = txn.get("amount", 0)
     score = score_result.get("risk_score", 75)
@@ -142,9 +145,12 @@ Investigation opened for transaction **{txn.get('transaction_id')}** involving a
 {patterns_bullet}
 
 ### 3. REGULATORY COMPLIANCE ASSESSMENT
-- **PMLA 2002 (Sec 12)**: Transactions structured to avoid detection or displaying no lawful economic purpose require mandatory STR filing with FIU-IND within 7 days.
-- **RBI Master Direction (Fraud Risk Management 2024)**: Mandates immediate containment, nodal debit freeze, and counterparty verification across implicated branches.
-- **NPCI OC 138**: Alerts on rapid velocity mule dispersion mandate real-time beneficiary hold.
+- **Statutory STR Reporting Obligation [PMLA_S12]**: Mandatory reporting of transactions displaying no lawful economic purpose or suspected of being structured to avoid thresholds to FIU-IND.
+- **Offence of Money Laundering & Structuring [PMLA_S3]**: Structuring and rapid dispersal of funds across multi-tier accounts triggers statutory anti-layering enforcement under Section 3.
+- **Enhanced Due Diligence Mandate [RBI_MD_KYC_2016_PARA_23]**: Disproportionate transactional velocity relative to customer profile mandates immediate Enhanced Due Diligence (EDD) and source verification.
+- **Strict 7-Day Statutory Filing Window [RBI_MD_KYC_2016_PARA_37]**: Obligation to transmit completed Suspicious Transaction Report to FIU-IND within 7 working days of established suspicion.
+- **Real-Time Fraud Containment [RBI_FRM_2024_CIRCULAR]**: Mandates immediate nodal account debit freeze and synchronized counterparty scrutiny across banking rails.
+- **Mule Account Mitigation Directives [NPCI_OC_138_MULE] [NPCI_UPI_2023_PARA_5]**: Alerts on rapid velocity mule dispersion mandate real-time beneficiary holds and automated NCRP alert transmission.
 
 ### 4. RECOMMENDED ACTION & JUSTIFICATION
 **Recommendation**: **{action}**
@@ -152,8 +158,8 @@ Investigation opened for transaction **{txn.get('transaction_id')}** involving a
 
 ### 5. ANALYST ACTION ITEMS
 1. Verify device fingerprint and IP geovelocity for account `{txn.get('sender_account')}`.
-2. Place a provisional lien/freeze on recipient `{txn.get('receiver_account')}` and associated downstream mule accounts.
-3. Transmit draft STR package to Principal Officer for statutory FIU-IND submission.
+2. Place a provisional lien/freeze on recipient `{txn.get('receiver_account')}` and associated downstream mule accounts [RBI_FRM_2024_CIRCULAR].
+3. Transmit draft STR package to Principal Officer for statutory FIU-IND submission within 7 days [PMLA_S12] [RBI_MD_KYC_2016_PARA_37].
 """
 
 
@@ -386,34 +392,69 @@ async def run_investigation(
         f"Model Probability   : {score_result.get('model_probability', 0):.4f}\n"
         f"Rule Adjustments    : {score_result.get('rule_adjustments', [])}\n"
         f"Recommended Action  : {score_result['recommended_action']}\n"
-        f"Alert Pattern       : {txn_dict.get('scenario_type', 'SUSPICIOUS_TRANSFER')}\n"
+        f"Statutory Basis     : PMLA 2002 Section 12 [PMLA_S12] & RBI KYC Para 37 [RBI_MD_KYC_2016_PARA_37]\n"
+        f"Regulatory Mandates : RBI FRM 2024 [RBI_FRM_2024_CIRCULAR] | NPCI OC 138 [NPCI_OC_138_MULE] [NPCI_UPI_2023_PARA_5]\n"
+        f"Alert Pattern       : {txn_dict.get('scenario_type', 'SUSPICIOUS_TRANSFER')} [PMLA_S3]\n"
         f"Alert Reason        : {txn_dict.get('fraud_reason', 'Behavioral anomaly detected')}\n"
-        f"\nAI INVESTIGATION SUMMARY:\n{llm_report[:600]}...\n"
+        f"\nAI INVESTIGATION SUMMARY:\n{llm_report[:650]}...\n"
         f"\nReporting Officer   : [PENDING ANALYST SIGN-OFF]\n"
-        f"Filing Deadline     : Within 7 days per PMLA 2002 Section 12\n"
+        f"Filing Deadline     : Within 7 days per PMLA 2002 Section 12 [PMLA_S12]\n"
     )
 
-    # ── 5. Build full evidence package ────────────────────────────────────────
+    # ── 5. Composite Risk Synthesis (ML Tabular + Network Topology) ───────────
     now = datetime.utcnow().isoformat()
+    cited_clauses = extract_cited_clauses(llm_report + " " + str_draft)
+
+    composite_risk_score = float(score_result["risk_score"])
+    composite_risk_band = score_result["risk_band"]
+    composite_action = score_result["recommended_action"]
+
+    if network_risk == "CRITICAL":
+        composite_risk_band = "CRITICAL"
+        composite_risk_score = max(composite_risk_score, 98.4)
+        composite_action = "ESCALATE"
+    elif network_risk == "HIGH" and composite_risk_band in {"LOW", "MEDIUM"}:
+        composite_risk_band = "HIGH"
+        composite_risk_score = max(composite_risk_score, 78.5)
+        composite_action = "ESCALATE"
+
+    # Actionable Counterfactual Explanation (Phase 4)
+    cf = generate_counterfactual(
+        transaction=txn_dict,
+        shap_dict=score_result.get("shap_values", {}),
+        risk_band=composite_risk_band,
+        current_score=composite_risk_score,
+        model=app_state.model,
+        metadata=app_state.metadata,
+        network_risk=network_risk,
+        patterns=patterns,
+    )
+
     evidence_package = {
         "case_id": case_id,
         "transaction_id": actual_txn_id,
         "transaction": txn_dict,
         # Flat risk fields (frontend-friendly)
-        "risk_score": score_result["risk_score"],
+        "risk_score": composite_risk_score,
+        "ml_risk_score": score_result["risk_score"],
+        "ml_risk_band": score_result["risk_band"],
         "model_probability": score_result.get("model_probability", 0),
-        "risk_level": score_result["risk_band"],
-        "risk_band": score_result["risk_band"],
+        "risk_level": composite_risk_band,
+        "risk_band": composite_risk_band,
         "probability": score_result["probability"],
         "top_factors": score_result["top_factors"],
         "shap_values": score_result.get("shap_values", {}),
         "rule_adjustments": score_result.get("rule_adjustments", []),
+        "counterfactual": cf,
+        # Regulatory Clause Traceability (Phase 4)
+        "regulatory_clauses": REGULATORY_CLAUSES,
+        "cited_clauses": cited_clauses,
         # Agent outputs
         "graph_context": graph_context,
         "investigation_report": llm_report,
         "llm_analysis": llm_report,
         "str_draft": str_draft,
-        "recommended_action": score_result["recommended_action"],
+        "recommended_action": composite_action,
         "confidence": score_result["probability"],
         "ai_generated": ai_generated,
         "reasoning_source": "gemini-3.6-flash" if ai_generated else "regulatory-fallback-template",
@@ -430,8 +471,8 @@ async def run_investigation(
                        investigation_report=?, str_draft=?, updated_at=?
                    WHERE case_id=?""",
                 (
-                    score_result["risk_score"], score_result["risk_band"],
-                    score_result["recommended_action"], llm_report, str_draft, now,
+                    composite_risk_score, composite_risk_band,
+                    composite_action, llm_report, str_draft, now,
                     case_id,
                 ),
             )
@@ -444,8 +485,8 @@ async def run_investigation(
                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     case_id, actual_txn_id, "OPEN",
-                    score_result["risk_score"], score_result["risk_band"],
-                    score_result["recommended_action"], user.email,
+                    composite_risk_score, composite_risk_band,
+                    composite_action, user.email,
                     llm_report, str_draft, now, now,
                 ),
             )
@@ -453,8 +494,14 @@ async def run_investigation(
         log_audit(
             conn, case_id, "INVESTIGATION_COMPLETED",
             actor=user.email,
-            details=f"Score={score_result['risk_score']}, Action={score_result['recommended_action']}, AI={ai_generated}",
+            details=f"CompositeScore={composite_risk_score}, Action={composite_action}, ML={score_result['risk_score']}, Network={network_risk}, AI={ai_generated}",
         )
         evidence_package["audit_logged"] = True
 
     return evidence_package
+
+
+@router.get("/regulatory-clauses")
+async def get_regulatory_clauses_endpoint(_: CurrentUser = Depends(current_user)):
+    """Return dictionary of regulatory clauses and metadata for UI citation tooltips."""
+    return REGULATORY_CLAUSES

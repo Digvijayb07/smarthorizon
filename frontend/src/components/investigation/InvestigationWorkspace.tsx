@@ -25,6 +25,8 @@ import type { BackendCase } from "@/lib/api";
 import { useRole } from "@/context/RoleContext";
 import { InvestigationGraph } from "./InvestigationGraph";
 import { RiskIntelligencePanel } from "./RiskIntelligencePanel";
+import { TraceableText, CitedClausesList } from "./ClauseTraceability";
+import type { CounterfactualInsight, RegulatoryClause } from "@/lib/api";
 
 export interface InvestigationWorkspaceProps {
   caseData: Case;
@@ -34,23 +36,26 @@ export interface InvestigationWorkspaceProps {
   patterns?: Array<{
     type: string;
     description: string;
-    severity?: string;
-    count?: number;
-    total_amount?: number;
-  }>;
-  networkRisk?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | string;
-  networkRiskSummary?: string;
+    severity?: string | undefined;
+    count?: number | undefined;
+    total_amount?: number | undefined;
+  }> | undefined;
+  networkRisk?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | string | undefined;
+  networkRiskSummary?: string | undefined;
   agents: Agent[];
   regulatorySources: RegulatorySource[];
   report: InvestigationReport;
-  backendCase?: BackendCase | null;
-  onRunInvestigation?: () => void;
-  isInvestigating?: boolean;
-  onDecision?: (decision: string, notes?: string) => void;
-  isSubmittingDecision?: boolean;
-  decisionSuccess?: string | null;
-  decisionError?: string | null;
-  strDraft?: string | null;
+  backendCase?: BackendCase | null | undefined;
+  onRunInvestigation?: (() => void) | undefined;
+  isInvestigating?: boolean | undefined;
+  onDecision?: ((decision: string, notes?: string | undefined) => void) | undefined;
+  isSubmittingDecision?: boolean | undefined;
+  decisionSuccess?: string | null | undefined;
+  decisionError?: string | null | undefined;
+  strDraft?: string | null | undefined;
+  counterfactual?: CounterfactualInsight | null | undefined;
+  regulatoryClauses?: Record<string, RegulatoryClause> | null | undefined;
+  citedClauses?: string[] | null | undefined;
 }
 
 const agentIds = ["orchestrator", "data", "risk", "reason"];
@@ -74,6 +79,9 @@ export function InvestigationWorkspace({
   decisionSuccess = null,
   decisionError = null,
   strDraft = null,
+  counterfactual = null,
+  regulatoryClauses = null,
+  citedClauses = null,
 }: InvestigationWorkspaceProps) {
   const { role, loginWithRole } = useRole();
   const [localDecision, setLocalDecision] = useState<string | null>(null);
@@ -221,6 +229,9 @@ export function InvestigationWorkspace({
           risk={caseData.risk}
           networkRisk={networkRisk}
           networkRiskSummary={networkRiskSummary}
+          counterfactual={counterfactual || backendCase?.counterfactual || null}
+          mlRiskValue={backendCase?.ml_risk_score != null ? backendCase.ml_risk_score : undefined}
+          mlRiskLevel={backendCase?.ml_risk_band || undefined}
         />
       </div>
 
@@ -257,33 +268,43 @@ export function InvestigationWorkspace({
 
         {recommendationReasoning ? (
           <div className="mt-4 space-y-4">
-            <div className="rounded-xl border border-violet/20 bg-violet/5 p-4 text-sm leading-relaxed text-foreground whitespace-pre-wrap font-sans">
-              {recommendationReasoning}
+            <div className="rounded-xl border border-violet/20 bg-violet/5 p-4 text-sm leading-relaxed text-foreground font-sans">
+              <TraceableText
+                text={recommendationReasoning}
+                clauses={regulatoryClauses || backendCase?.regulatory_clauses}
+                className="whitespace-pre-wrap leading-relaxed"
+              />
             </div>
 
             {/* If STR draft exists */}
             {(strDraft || backendCase?.str_draft) && (
               <div className="rounded-xl border border-teal/20 bg-teal/5 p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between mb-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
                     <FileCheck className="size-4 text-teal" />
                     <span className="text-xs font-bold text-teal uppercase tracking-wider">
-                      FIU-IND Suspicious Transaction Report (STR) Draft Generated
+                      FIU-IND Suspicious Transaction Report (STR) Draft
+                    </span>
+                    <span className="hidden sm:inline-flex rounded bg-teal/15 px-1.5 py-0.5 text-[9px] font-mono text-teal font-semibold">
+                      Hover clause citations [PMLA_S12] for statutory grounding
                     </span>
                   </div>
                   <Button
                     onClick={copyStrDraft}
                     size="sm"
                     variant="outline"
-                    className="h-7 text-[11px] gap-1"
+                    className="h-7 text-[11px] gap-1 shrink-0"
                   >
                     {copiedStr ? <Check className="size-3 text-teal" /> : <Copy className="size-3" />}
                     {copiedStr ? "Copied" : "Copy STR"}
                   </Button>
                 </div>
-                <pre className="max-h-60 overflow-y-auto rounded-lg bg-background/80 p-3 text-[11px] font-mono text-muted-foreground leading-relaxed whitespace-pre-wrap">
-                  {strDraft || backendCase?.str_draft}
-                </pre>
+                <div className="max-h-72 overflow-y-auto rounded-lg bg-background/80 p-3.5 text-[11px] font-mono text-muted-foreground leading-relaxed whitespace-pre-wrap border border-border">
+                  <TraceableText
+                    text={strDraft || backendCase?.str_draft || ""}
+                    clauses={regulatoryClauses || backendCase?.regulatory_clauses}
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -363,22 +384,31 @@ export function InvestigationWorkspace({
         <section className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-xs" aria-labelledby="regulatory-title">
           <p className="text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase font-mono">Regulatory context</p>
           <h2 id="regulatory-title" className="mt-1 text-lg font-bold tracking-tight text-foreground">Sources consulted</h2>
-          <p className="mt-1.5 text-xs text-muted-foreground">Grounding regulatory documents available for investigator review.</p>
+          <p className="mt-1.5 text-xs text-muted-foreground">Grounding statutory clauses & directives cited for FIU-IND compliance.</p>
           {recommendationReasoning ? (
-            <ul className="mt-4 divide-y divide-border">
-              {regulatorySources.map((source) => (
-                <li key={source.code} className="flex gap-3 py-2.5 first:pt-0">
-                  <span className="font-mono text-xs font-bold text-violet">{source.code}</span>
-                  <span className="text-xs text-foreground">{source.name}</span>
-                </li>
-              ))}
-            </ul>
+            <div className="mt-4">
+              <CitedClausesList
+                citedCodes={
+                  citedClauses ||
+                  backendCase?.cited_clauses || [
+                    "PMLA_S12",
+                    "PMLA_S3",
+                    "RBI_MD_KYC_2016_PARA_23",
+                    "RBI_MD_KYC_2016_PARA_37",
+                    "RBI_FRM_2024_CIRCULAR",
+                    "NPCI_OC_138_MULE",
+                    "NPCI_UPI_2023_PARA_5",
+                  ]
+                }
+                clauses={regulatoryClauses || backendCase?.regulatory_clauses}
+              />
+            </div>
           ) : (
             <div className="mt-4 flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-8 text-center">
               <FileCheck className="size-6 text-muted-foreground/40 mb-1.5" />
               <p className="text-xs font-semibold text-muted-foreground">No Regulatory Sources Consulted Yet</p>
               <p className="mt-1 text-[11px] text-muted-foreground max-w-xs">
-                Regulatory statutes (RBI circulars, PMLA rules, FATF guidelines) will be cross-referenced during the AI investigation.
+                Regulatory statutes (RBI circulars, PMLA rules, NPCI guidelines) will be cross-referenced during the AI investigation.
               </p>
             </div>
           )}

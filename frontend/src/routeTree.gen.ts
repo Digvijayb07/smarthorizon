@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as BankRouteImport } from './routes/bank'
 import { Route as SignInRouteImport } from './routes/sign-in'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as DashboardApprovalsRouteImport } from './routes/dashboard/approvals'
@@ -34,6 +35,11 @@ import { Route as DashboardCasesCaseIdRouteImport } from './routes/dashboard/cas
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BankRoute = BankRouteImport.update({
+  id: '/bank',
+  path: '/bank',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SignInRoute = SignInRouteImport.update({
@@ -139,6 +145,7 @@ const DashboardCasesCaseIdRoute = DashboardCasesCaseIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/bank': typeof BankRoute
   '/sign-in': typeof SignInRoute
   '/dashboard/approvals': typeof DashboardApprovalsRoute
   '/dashboard/audit': typeof DashboardAuditRoute
@@ -162,6 +169,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/bank': typeof BankRoute
   '/sign-in': typeof SignInRoute
   '/dashboard/approvals': typeof DashboardApprovalsRoute
   '/dashboard/audit': typeof DashboardAuditRoute
@@ -186,6 +194,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/bank': typeof BankRoute
   '/sign-in': typeof SignInRoute
   '/dashboard/approvals': typeof DashboardApprovalsRoute
   '/dashboard/audit': typeof DashboardAuditRoute
@@ -211,6 +220,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/bank'
     | '/sign-in'
     | '/dashboard/approvals'
     | '/dashboard/audit'
@@ -234,6 +244,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/bank'
     | '/sign-in'
     | '/dashboard/approvals'
     | '/dashboard/audit'
@@ -257,6 +268,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/bank'
     | '/sign-in'
     | '/dashboard/approvals'
     | '/dashboard/audit'
@@ -281,6 +293,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  BankRoute: typeof BankRoute
   SignInRoute: typeof SignInRoute
   DashboardApprovalsRoute: typeof DashboardApprovalsRoute
   DashboardAuditRoute: typeof DashboardAuditRoute
@@ -310,6 +323,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/bank': {
+      id: '/bank'
+      path: '/bank'
+      fullPath: '/bank'
+      preLoaderRoute: typeof BankRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sign-in': {
@@ -457,6 +477,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  BankRoute: BankRoute,
   SignInRoute: SignInRoute,
   DashboardApprovalsRoute: DashboardApprovalsRoute,
   DashboardAuditRoute: DashboardAuditRoute,

@@ -107,7 +107,7 @@ function InvestigationPage() {
   // Decision mutation
   const decisionMutation = useMutation({
     mutationFn: (params: { decision: string; notes?: string }) =>
-      submitDecision(activeCaseId, params.decision, "investigator-1", params.notes),
+      submitDecision(activeCaseId, params.decision, params.notes),
     onSuccess: (data) => {
       setDecisionFeedback(data.decision);
       queryClient.invalidateQueries({ queryKey: ["case", activeCaseId] });
@@ -124,7 +124,8 @@ function InvestigationPage() {
   const reportSummary =
     investigationResult ||
     backendCase?.investigation_report ||
-    demoReport.sections[0]?.summary;
+    demoReport.sections[0]?.summary ||
+    "";
 
   const report: InvestigationReport = {
     caseId: activeCaseId,
@@ -171,10 +172,15 @@ function InvestigationPage() {
         report={report}
         onRunInvestigation={() => investigateMutation.mutate()}
         isInvestigating={investigateMutation.isPending}
-        onDecision={(decisionCode, notes) => decisionMutation.mutate({ decision: decisionCode, notes })}
+        onDecision={(decisionCode, notes) =>
+          decisionMutation.mutate({ decision: decisionCode, ...(notes ? { notes } : {}) })
+        }
         isSubmittingDecision={decisionMutation.isPending}
         decisionSuccess={decisionFeedback}
         strDraft={strDraftResult || backendCase?.str_draft}
+        counterfactual={backendCase?.counterfactual}
+        regulatoryClauses={backendCase?.regulatory_clauses}
+        citedClauses={backendCase?.cited_clauses}
       />
     </DashboardLayout>
   );

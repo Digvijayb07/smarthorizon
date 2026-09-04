@@ -11,7 +11,15 @@ import {
   graphNodes,
   regulatorySources,
 } from "@/data/mock-investigation";
-import { getCase, getCaseGraph, runInvestigation, submitDecision, type BackendCase } from "@/lib/api";
+import {
+  getCase,
+  getCaseGraph,
+  runInvestigation,
+  submitDecision,
+  type BackendCase,
+  type CounterfactualInsight,
+  type RegulatoryClause,
+} from "@/lib/api";
 import { Loader2 } from "lucide-react";
 import type { Case, InvestigationReport, RiskLevel, GraphNode, GraphEdge } from "@/types/investigation";
 
@@ -126,6 +134,9 @@ function CaseWorkspacePage() {
   const [investigationResult, setInvestigationResult] = useState<string | null>(null);
   const [strDraftResult, setStrDraftResult] = useState<string | null>(null);
   const [decisionFeedback, setDecisionFeedback] = useState<string | null>(null);
+  const [counterfactualResult, setCounterfactualResult] = useState<CounterfactualInsight | null>(null);
+  const [regulatoryClausesResult, setRegulatoryClausesResult] = useState<Record<string, RegulatoryClause> | null>(null);
+  const [citedClausesResult, setCitedClausesResult] = useState<string[] | null>(null);
 
   // Fetch real case data from backend
   const {
@@ -154,6 +165,9 @@ function CaseWorkspacePage() {
     onSuccess: (data) => {
       setInvestigationResult(data.investigation_report);
       setStrDraftResult(data.str_draft);
+      if (data.counterfactual) setCounterfactualResult(data.counterfactual);
+      if (data.regulatory_clauses) setRegulatoryClausesResult(data.regulatory_clauses);
+      if (data.cited_clauses) setCitedClausesResult(data.cited_clauses);
       queryClient.invalidateQueries({ queryKey: ["case", caseId] });
       queryClient.invalidateQueries({ queryKey: ["cases"] });
       queryClient.invalidateQueries({ queryKey: ["auditLog"] });
@@ -377,11 +391,16 @@ function CaseWorkspacePage() {
         report={report}
         onRunInvestigation={() => investigateMutation.mutate()}
         isInvestigating={investigateMutation.isPending}
-        onDecision={(decisionCode, notes) => decisionMutation.mutate({ decision: decisionCode, notes })}
+        onDecision={(decisionCode, notes) =>
+          decisionMutation.mutate({ decision: decisionCode, ...(notes ? { notes } : {}) })
+        }
         isSubmittingDecision={decisionMutation.isPending}
         decisionSuccess={decisionFeedback || backendCase?.analyst_decision}
         decisionError={decisionMutation.error ? (decisionMutation.error as Error).message : null}
         strDraft={strDraftResult || backendCase?.str_draft}
+        counterfactual={counterfactualResult || backendCase?.counterfactual}
+        regulatoryClauses={regulatoryClausesResult || backendCase?.regulatory_clauses}
+        citedClauses={citedClausesResult || backendCase?.cited_clauses}
       />
     </DashboardLayout>
   );

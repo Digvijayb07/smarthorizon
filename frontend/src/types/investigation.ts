@@ -63,10 +63,10 @@ export interface GraphNode {
   label: string;
   x: number;
   y: number;
-  suspicious?: boolean;
-  role?: "ORIGIN" | "INTERMEDIARY" | "MULE_CASHOUT" | "FEEDER" | "BENEFICIARY" | "COUNTERPARTY" | string;
-  inDegree?: number;
-  outDegree?: number;
+  suspicious?: boolean | undefined;
+  role?: "ORIGIN" | "INTERMEDIARY" | "MULE_CASHOUT" | "FEEDER" | "BENEFICIARY" | "COUNTERPARTY" | string | undefined;
+  inDegree?: number | undefined;
+  outDegree?: number | undefined;
 }
 
 export interface GraphEdge {

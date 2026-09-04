@@ -129,7 +129,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
       const res = await apiLogin(email, password);
       const userRole = (res.user.role.toLowerCase() as RoleId) || "investigator";
       const userProfile: UserProfile = {
-        id: res.user.id,
+        id: res.user.id || res.user.email,
         name: res.user.name,
         email: res.user.email,
         title: ROLE_TITLES[userRole] || `${userRole.charAt(0).toUpperCase() + userRole.slice(1)}`,
