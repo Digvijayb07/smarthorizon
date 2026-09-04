@@ -1,8 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { FileCheck, Shield, CheckCircle2, AlertCircle } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 
 export const Route = createFileRoute("/dashboard/compliance")({
+  beforeLoad: () => {
+    throw redirect({ to: "/dashboard/cases" });
+  },
   component: CompliancePage,
 });
 

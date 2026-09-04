@@ -44,13 +44,34 @@ class InvestigateRequest(BaseModel):
     auto_create_case: bool = True
 
 
-def _build_llm_prompt(txn: dict, score_result: dict) -> str:
+def _build_llm_prompt(txn: dict, score_result: dict, graph_context: dict | None = None) -> str:
     factors_text = "\n".join(
         f"  - {f['feature']}: {f.get('description', f['feature'])} (SHAP impact: {f['shap_value']:+.3f})"
         for f in score_result.get("top_factors", [])
     )
+
+    graph_ctx = graph_context or {}
+    patterns = graph_ctx.get("patterns", [])
+    patterns_text = "\n".join(
+        f"  - [{p.get('type')}] ({p.get('severity', 'HIGH')}): {p.get('description')}"
+        for p in patterns
+    ) if patterns else "  - Isolated transaction; no multi-hop syndicate loops detected."
+
+    network_risk = graph_ctx.get("network_risk", "LOW")
+    network_summary = graph_ctx.get("network_risk_summary", "Isolated point-to-point transfer.")
+    node_count = graph_ctx.get("node_count", 2)
+    edge_count = graph_ctx.get("edge_count", 1)
+
+    # Implicated node accounts
+    nodes = graph_ctx.get("nodes", [])
+    mule_accounts = [
+        n["id"] for n in nodes
+        if n.get("role") in ["MULE_CASHOUT", "INTERMEDIARY"] or n.get("suspicious")
+    ]
+    mules_text = ", ".join(mule_accounts[:6]) if mule_accounts else "None identified beyond primary endpoints"
+
     return f"""You are a Lead Financial Crime Investigator at an Indian Scheduled Commercial Bank.
-Analyze this alert and write a clear, audit-ready investigation report.
+Analyze this alert and write a clear, audit-ready investigation report synthesizing both Machine Learning features and NetworkX Multi-Hop Graph intelligence.
 
 TRANSACTION SUMMARY:
 - Transaction ID: {txn.get('transaction_id')}
@@ -64,29 +85,36 @@ TRANSACTION SUMMARY:
 - Alert Reason: {txn.get('fraud_reason', 'Behavioral anomaly detected')}
 - Priority Severity: {txn.get('severity', 'HIGH')}
 
-MACHINE LEARNING & SHAP SIGNALS:
-- Risk Score: {score_result.get('risk_score', 0)}/100 ({score_result.get('risk_band', 'MEDIUM')} risk)
+MACHINE LEARNING & SHAP SIGNALS (XGBoost):
+- Transaction Risk Score: {score_result.get('risk_score', 0)}/100 ({score_result.get('risk_band', 'MEDIUM')} risk)
 - Model Probability: {score_result.get('model_probability', 0):.4f} (before severity override)
 - Rule Adjustments: {score_result.get('rule_adjustments', [])}
 - Recommended Action: {score_result.get('recommended_action', 'MONITOR')}
 - Primary Explainability Drivers:
 {factors_text}
 
+NETWORK GRAPH & RELATIONAL TOPOLOGY (NetworkX):
+- Network Risk Level: {network_risk} ({network_summary})
+- Subgraph Scope: {node_count} Accounts, {edge_count} Flow Edges
+- Implicated Syndicate/Mule Accounts: {mules_text}
+- Detected Topological Patterns:
+{patterns_text}
+
 REGULATORY GUIDANCE:
 - RBI Master Direction - Fraud Risk Management in Commercial Banks 2024
-- PMLA 2002 Section 12 (Reporting of suspicious transactions to FIU-IND within 7 days)
+- PMLA 2002 Section 12 (Statutory reporting of suspicious transactions / structuring to FIU-IND)
 - NPCI UPI Circular No. 138 (Mule and rapid fund velocity monitoring)
 
 Please provide a structured report with these exact 5 sections:
-1. EXECUTIVE SUMMARY: Direct summary of the transaction and flagged behavior.
-2. SUSPICIOUS INDICATORS: Key signals observed (money flow, balance depletion, velocity).
-3. REGULATORY COMPLIANCE ASSESSMENT: Applicable RBI/PMLA clauses and obligations.
-4. RECOMMENDED ACTION & JUSTIFICATION: Action (BLOCK / FLAG FOR MONITORING / DISMISS) with explicit rationale.
-5. ANALYST ACTION ITEMS: Concrete verification checklist for the human analyst.
+1. EXECUTIVE SUMMARY: Direct summary of the transaction, composite risk, and whether it represents an isolated anomaly or an active multi-account syndicate. Explicitly cite the Network Risk level ({network_risk}).
+2. SUSPICIOUS INDICATORS: Key signals observed (money flow, balance depletion, SHAP feature drivers, and topological graph patterns like structuring or mule fan-out).
+3. REGULATORY COMPLIANCE ASSESSMENT: Applicable RBI/PMLA clauses and obligations (specifically address PMLA Section 12 for structuring/reporting deadline and NPCI Circular 138 for mule rings).
+4. RECOMMENDED ACTION & JUSTIFICATION: Action (BLOCK / FLAG FOR MONITORING / DISMISS) with explicit rationale citing both ML and Network signals.
+5. ANALYST ACTION ITEMS: Concrete verification checklist for the human analyst, including freezing implicated mule accounts.
 """
 
 
-def _generate_fallback_report(txn: dict, score_result: dict) -> str:
+def _generate_fallback_report(txn: dict, score_result: dict, graph_context: dict | None = None) -> str:
     """Deterministic, high-quality regulatory investigation template if API is offline."""
     scenario = txn.get("scenario_type", "SUSPICIOUS_VELOCITY").replace("_", " ").title()
     amount = txn.get("amount", 0)
@@ -95,31 +123,43 @@ def _generate_fallback_report(txn: dict, score_result: dict) -> str:
     action = score_result.get("recommended_action", "FLAG")
     reason = txn.get("fraud_reason", "Abnormal fund movement pattern detected.")
 
+    graph_ctx = graph_context or {}
+    net_risk = graph_ctx.get("network_risk", "HIGH")
+    net_summary = graph_ctx.get("network_risk_summary", "Multi-hop counterparty network detected.")
+    patterns = graph_ctx.get("patterns", [])
+    patterns_bullet = "\n".join(
+        f"- **Network Pattern ({p.get('type')})**: {p.get('description')}"
+        for p in patterns
+    ) if patterns else "- **Network Topology**: Multi-hop traversal identified connected feeder and intermediary accounts."
+
     return f"""### 1. EXECUTIVE SUMMARY
-Investigation opened for transaction **{txn.get('transaction_id')}** involving a transfer of **INR {amount:,.2f}** via {txn.get('channel', 'UPI')}. The system identified patterns consistent with **{scenario}**. Composite risk evaluation produced a score of **{score}/100 ({band} Risk)**.
+Investigation opened for transaction **{txn.get('transaction_id')}** involving a transfer of **INR {amount:,.2f}** via {txn.get('channel', 'UPI')}. The system identified behavioral indicators consistent with **{scenario}**. Composite risk evaluation produced an XGBoost Transaction Risk Score of **{score}/100 ({band} Risk)** alongside a NetworkX Topological Risk of **{net_risk}** ({net_summary}).
 
 ### 2. SUSPICIOUS INDICATORS
-- **Behavioral Flag**: {reason}
-- **Balance Impact**: Origin balance moved from INR {txn.get('old_balance_orig', 0):,.2f} to INR {txn.get('new_balance_orig', 0):,.2f}.
-- **ML Attribution**: Model flagged high anomalous weights on balance reconciliation and transfer-to-balance ratios.
+- **Behavioral Anomaly**: {reason}
+- **Balance Trajectory**: Origin balance depleted from INR {txn.get('old_balance_orig', 0):,.2f} to INR {txn.get('new_balance_orig', 0):,.2f}.
+- **ML Attribution Drivers**: Elevated weights on balance depletion ratio and velocity indicators.
+{patterns_bullet}
 
 ### 3. REGULATORY COMPLIANCE ASSESSMENT
-- **PMLA 2002 (Sec 12)**: Transactions displaying non-economic rationale require logging and potential STR filing with FIU-IND.
-- **RBI Master Direction (Fraud Risk Management 2024)**: Mandates immediate containment and customer verification on flagged accounts.
-- **NPCI OC 138**: Alerts on automated mule-dispersion patterns require real-time nodal desk review.
+- **PMLA 2002 (Sec 12)**: Transactions structured to avoid detection or displaying no lawful economic purpose require mandatory STR filing with FIU-IND within 7 days.
+- **RBI Master Direction (Fraud Risk Management 2024)**: Mandates immediate containment, nodal debit freeze, and counterparty verification across implicated branches.
+- **NPCI OC 138**: Alerts on rapid velocity mule dispersion mandate real-time beneficiary hold.
 
 ### 4. RECOMMENDED ACTION & JUSTIFICATION
 **Recommendation**: **{action}**
-*Rationale*: Given the {band} risk score ({score}/100) and observed {scenario} indicators, the account requires immediate risk mitigation.
+*Rationale*: High composite risk ({score}/100 Transaction Risk + {net_risk} Network Risk). Multi-hop analysis confirms coordinated fund movement necessitating immediate nodal intervention.
 
 ### 5. ANALYST ACTION ITEMS
 1. Verify device fingerprint and IP geovelocity for account `{txn.get('sender_account')}`.
-2. Conduct out-of-band customer confirmation if account is frozen.
-3. Review associated beneficiary `{txn.get('receiver_account')}` for multi-bank mule linkages.
+2. Place a provisional lien/freeze on recipient `{txn.get('receiver_account')}` and associated downstream mule accounts.
+3. Transmit draft STR package to Principal Officer for statutory FIU-IND submission.
 """
 
 
-async def _call_gemini_or_fallback(prompt: str, txn: dict, score_result: dict) -> tuple[str, bool]:
+async def _call_gemini_or_fallback(
+    prompt: str, txn: dict, score_result: dict, graph_context: dict | None = None
+) -> tuple[str, bool]:
     """
     Call Gemini LLM or return fallback report.
     Returns (report_text, ai_generated_flag).
@@ -140,7 +180,7 @@ async def _call_gemini_or_fallback(prompt: str, txn: dict, score_result: dict) -
                 return text, True
         except Exception as e:
             print(f"[GEMINI CALL FAILED, USING REGULATORY FALLBACK ENGINE] {e}")
-    return _generate_fallback_report(txn, score_result), False
+    return _generate_fallback_report(txn, score_result, graph_context), False
 
 
 @router.post("/{transaction_id}")
@@ -198,70 +238,159 @@ async def run_investigation(
             "probability": 0.50, "rule_adjustments": [],
         }
 
-    # ── 2. contextAgent — query ALL related transactions for graph analysis ────
+    # ── 2. contextAgent — multi-hop graph analysis via NetworkX ───────────────
     sender_account = txn_dict.get("sender_account") or txn_dict.get("sender_id", "UNKNOWN")
     receiver_account = txn_dict.get("receiver_account") or txn_dict.get("receiver_id", "UNKNOWN")
 
-    related_txns = conn.execute(
-        """SELECT * FROM transactions
-           WHERE sender_account = ? OR receiver_account = ?
-              OR sender_id = ? OR receiver_id = ?
-           ORDER BY timestamp ASC""",
-        (sender_account, receiver_account, sender_account, receiver_account),
-    ).fetchall()
+    visited_accounts = {sender_account, receiver_account}
+    current_frontier = {sender_account, receiver_account}
+    collected_txns: dict[str, dict[str, Any]] = {}
+
+    if txn_dict.get("transaction_id"):
+        collected_txns[txn_dict["transaction_id"]] = txn_dict
+
+    for _ in range(2):
+        if not current_frontier:
+            break
+        placeholders = ",".join("?" for _ in current_frontier)
+        query_params = list(current_frontier) + list(current_frontier)
+        hop_rows = conn.execute(
+            f"""SELECT * FROM transactions
+               WHERE sender_account IN ({placeholders}) OR receiver_account IN ({placeholders})
+               ORDER BY timestamp ASC LIMIT 40""",
+            query_params,
+        ).fetchall()
+
+        next_frontier = set()
+        for r in hop_rows:
+            r_dict = dict(r)
+            t_id = r_dict.get("transaction_id") or f"TX-{len(collected_txns)}"
+            if t_id not in collected_txns:
+                collected_txns[t_id] = r_dict
+                src = r_dict.get("sender_account") or r_dict.get("sender_id")
+                dst = r_dict.get("receiver_account") or r_dict.get("receiver_id")
+                if src and src not in visited_accounts:
+                    next_frontier.add(src)
+                if dst and dst not in visited_accounts:
+                    next_frontier.add(dst)
+
+        visited_accounts.update(next_frontier)
+        current_frontier = next_frontier
+        if len(collected_txns) >= 50:
+            break
 
     import networkx as nx
     G = nx.DiGraph()
-    for r in related_txns:
-        r_dict = dict(r)
+    for t_id, r_dict in collected_txns.items():
         src = r_dict.get("sender_account") or r_dict.get("sender_id", "UNKNOWN")
         dst = r_dict.get("receiver_account") or r_dict.get("receiver_id", "UNKNOWN")
-        G.add_node(src, type="sender" if src == sender_account else "related")
-        G.add_node(dst, type="receiver" if dst == receiver_account else "related")
+        amt = r_dict.get("amount", 0)
+        G.add_node(src)
+        G.add_node(dst)
         G.add_edge(
             src, dst,
-            amount=r_dict.get("amount"),
-            transaction_id=r_dict.get("transaction_id"),
+            amount=amt,
+            transaction_id=t_id,
             channel=r_dict.get("channel", "UPI"),
+            timestamp=r_dict.get("timestamp", ""),
         )
 
-    # Real pattern detection on the full graph
+    G.add_node(sender_account)
+    G.add_node(receiver_account)
+    G.add_edge(
+        sender_account,
+        receiver_account,
+        amount=txn_dict.get("amount", 0),
+        transaction_id=txn_dict.get("transaction_id", ""),
+        channel=txn_dict.get("channel", "UPI"),
+        timestamp=txn_dict.get("timestamp", ""),
+    )
+
+    for n in G.nodes:
+        in_d = G.in_degree(n)
+        out_d = G.out_degree(n)
+        if n == sender_account:
+            role = "ORIGIN"
+            suspicious = True
+        elif n == receiver_account:
+            role = "INTERMEDIARY" if out_d > 0 else "BENEFICIARY"
+            suspicious = True
+        elif G.has_edge(n, sender_account):
+            role = "FEEDER"
+            suspicious = False
+        elif G.has_edge(receiver_account, n) or G.has_edge(sender_account, n):
+            role = "MULE_CASHOUT"
+            suspicious = True
+        elif in_d > 0 and out_d > 0:
+            role = "INTERMEDIARY"
+            suspicious = True
+        else:
+            role = "COUNTERPARTY"
+            suspicious = False
+        G.nodes[n]["role"] = role
+        G.nodes[n]["suspicious"] = suspicious
+        G.nodes[n]["in_degree"] = in_d
+        G.nodes[n]["out_degree"] = out_d
+
     from routers.graph import _detect_patterns
-    patterns = _detect_patterns(G, sender_account, receiver_account)
+    patterns, network_risk, network_summary = _detect_patterns(G, sender_account, receiver_account)
 
     graph_context = {
         "nodes": [{"id": n, **G.nodes[n]} for n in G.nodes],
-        "links": [{"source": u, "target": v, **G.edges[u, v]} for u, v in G.edges],
+        "links": [
+            {
+                "source": u,
+                "target": v,
+                "amount": G.edges[u, v].get("amount"),
+                "channel": G.edges[u, v].get("channel", "UPI"),
+                "transaction_id": G.edges[u, v].get("transaction_id"),
+                "timestamp": G.edges[u, v].get("timestamp"),
+            }
+            for u, v in G.edges
+        ],
         "patterns": patterns,
-        "transaction_count": len(related_txns),
+        "network_risk": network_risk,
+        "network_risk_summary": network_summary,
+        "transaction_count": len(collected_txns),
         "node_count": G.number_of_nodes(),
         "edge_count": G.number_of_edges(),
     }
 
     # ── 3. reasonAgent (Gemini LLM) ──────────────────────────────────────────
-    prompt = _build_llm_prompt(txn_dict, score_result)
-    llm_report, ai_generated = await _call_gemini_or_fallback(prompt, txn_dict, score_result)
+    prompt = _build_llm_prompt(txn_dict, score_result, graph_context)
+    llm_report, ai_generated = await _call_gemini_or_fallback(prompt, txn_dict, score_result, graph_context)
 
-    # ── 4. STR Draft (FIU-IND format) ────────────────────────────────────────
+    # ── 4. STR Draft (FIU-IND format with Relational Evidence) ────────────────
+    mule_list = [
+        n["id"] for n in graph_context["nodes"]
+        if n.get("role") in ["MULE_CASHOUT", "INTERMEDIARY"]
+    ]
+    mule_line = ", ".join(mule_list) if mule_list else "None identified beyond primary endpoints"
+    pattern_line = ", ".join(p["type"] for p in patterns) if patterns else "Point-to-point transfer"
+
     str_draft = (
         f"SUSPICIOUS TRANSACTION REPORT — FIU-IND FORMAT\n"
         f"{'='*55}\n"
-        f"Report Date       : {datetime.utcnow().strftime('%d-%b-%Y')}\n"
-        f"Case Reference    : {case_id}\n"
-        f"Transaction ID    : {actual_txn_id}\n"
-        f"Amount            : INR {txn_dict.get('amount', 0):,.2f}\n"
-        f"Channel           : {txn_dict.get('channel', 'UPI')}\n"
-        f"Sender Account    : {sender_account}\n"
-        f"Receiver Account  : {receiver_account}\n"
-        f"Risk Score        : {score_result['risk_score']}/100 ({score_result['risk_band']})\n"
-        f"Model Probability : {score_result.get('model_probability', 0):.4f}\n"
-        f"Rule Adjustments  : {score_result.get('rule_adjustments', [])}\n"
-        f"Recommended Action: {score_result['recommended_action']}\n"
-        f"Alert Pattern     : {txn_dict.get('scenario_type', 'SUSPICIOUS_TRANSFER')}\n"
-        f"Alert Reason      : {txn_dict.get('fraud_reason', 'Behavioral anomaly detected')}\n"
-        f"\nAI INVESTIGATION SUMMARY:\n{llm_report[:500]}...\n"
-        f"\nReporting Officer : [PENDING ANALYST SIGN-OFF]\n"
-        f"Filing Deadline   : Within 7 days per PMLA 2002 Section 12\n"
+        f"Report Date         : {datetime.utcnow().strftime('%d-%b-%Y')}\n"
+        f"Case Reference      : {case_id}\n"
+        f"Transaction ID      : {actual_txn_id}\n"
+        f"Amount              : INR {txn_dict.get('amount', 0):,.2f}\n"
+        f"Channel             : {txn_dict.get('channel', 'UPI')}\n"
+        f"Sender Account      : {sender_account}\n"
+        f"Receiver Account    : {receiver_account}\n"
+        f"XGBoost Risk Score  : {score_result['risk_score']}/100 ({score_result['risk_band']})\n"
+        f"Network Risk Level  : {network_risk} ({network_summary})\n"
+        f"Graph Topology Scope: {graph_context['node_count']} Accounts, {graph_context['edge_count']} Flow Edges\n"
+        f"Detected Patterns   : {pattern_line}\n"
+        f"Implicated Mules    : {mule_line}\n"
+        f"Model Probability   : {score_result.get('model_probability', 0):.4f}\n"
+        f"Rule Adjustments    : {score_result.get('rule_adjustments', [])}\n"
+        f"Recommended Action  : {score_result['recommended_action']}\n"
+        f"Alert Pattern       : {txn_dict.get('scenario_type', 'SUSPICIOUS_TRANSFER')}\n"
+        f"Alert Reason        : {txn_dict.get('fraud_reason', 'Behavioral anomaly detected')}\n"
+        f"\nAI INVESTIGATION SUMMARY:\n{llm_report[:600]}...\n"
+        f"\nReporting Officer   : [PENDING ANALYST SIGN-OFF]\n"
+        f"Filing Deadline     : Within 7 days per PMLA 2002 Section 12\n"
     )
 
     # ── 5. Build full evidence package ────────────────────────────────────────

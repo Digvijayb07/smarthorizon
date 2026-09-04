@@ -9,37 +9,76 @@ const levelStyle = {
   CRITICAL: "text-risk-critical bg-risk-critical/10",
 };
 
-export function RiskIntelligencePanel({ risk }: { risk: RiskScore }) {
+export function RiskIntelligencePanel({
+  risk,
+  networkRisk,
+  networkRiskSummary,
+}: {
+  risk: RiskScore;
+  networkRisk?: string;
+  networkRiskSummary?: string;
+}) {
   const maxContribution = Math.max(...risk.factors.map((factor) => factor.contribution));
   const majorFactors = risk.factors.slice(0, 4);
+
+  const netRiskLevel = (networkRisk || "LOW").toUpperCase();
+  const netStyle =
+    netRiskLevel === "CRITICAL"
+      ? "text-risk-high bg-risk-high/15 border-risk-high/40"
+      : netRiskLevel === "HIGH"
+      ? "text-amber-400 bg-amber-500/15 border-amber-500/40"
+      : netRiskLevel === "MEDIUM"
+      ? "text-yellow-400 bg-yellow-500/15 border-yellow-500/40"
+      : "text-teal bg-teal/15 border-teal/40";
 
   return (
     <aside className="rounded-2xl border border-border bg-card p-5 sm:p-6" aria-labelledby="risk-intelligence-title">
       <div className="flex items-start justify-between gap-3 border-b border-border pb-4">
         <div>
           <p className="text-[10px] font-semibold tracking-[0.16em] text-muted-foreground uppercase font-mono">
-            Risk Intelligence
+            Dual Risk Intelligence
           </p>
           <h2 id="risk-intelligence-title" className="mt-1 text-lg font-semibold text-foreground">
-            Risk Score
+            Risk Assessment
           </h2>
         </div>
         <AlertTriangle className="size-5 text-risk-high" aria-hidden="true" />
       </div>
 
-      <div className="mt-5 rounded-xl border border-border bg-muted/40 p-4">
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-              Current score
-            </span>
-            <div className="mt-2 flex items-end gap-2">
-              <span className="text-4xl font-semibold tabular-nums text-foreground">{risk.value}</span>
-              <span className="pb-1 text-sm text-muted-foreground">/ {risk.max}</span>
+      {/* Dual Risk Side-by-Side: ML Transaction Risk + NetworkX Graph Risk */}
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {/* ML Transaction Risk */}
+        <div className="rounded-xl border border-border bg-muted/40 p-3.5">
+          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+            ML Transaction Risk
+          </span>
+          <div className="mt-1.5 flex items-end justify-between">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-3xl font-bold tabular-nums text-foreground">{risk.value}</span>
+              <span className="text-xs text-muted-foreground">/ {risk.max}</span>
             </div>
+            <span className={cn("rounded-md border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider font-mono", levelStyle[risk.level])}>
+              {risk.level}
+            </span>
           </div>
-          <span className={cn("rounded-md border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]", levelStyle[risk.level])}>
-            {risk.level}
+          <span className="mt-1.5 block text-[10px] text-muted-foreground font-mono">XGBoost Feature Attribution</span>
+        </div>
+
+        {/* NetworkX Relational Risk */}
+        <div className="rounded-xl border border-border bg-muted/40 p-3.5">
+          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+            Network Topology Risk
+          </span>
+          <div className="mt-1.5 flex items-end justify-between">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-bold font-mono tracking-tight text-foreground">{netRiskLevel}</span>
+            </div>
+            <span className={cn("rounded-md border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider font-mono", netStyle)}>
+              NetworkX
+            </span>
+          </div>
+          <span className="mt-1.5 block text-[10px] text-muted-foreground truncate" title={networkRiskSummary || "Multi-hop Graph Analysis"}>
+            {networkRiskSummary || "Multi-hop Relational Analysis"}
           </span>
         </div>
       </div>

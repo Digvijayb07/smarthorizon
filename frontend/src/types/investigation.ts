@@ -64,6 +64,9 @@ export interface GraphNode {
   x: number;
   y: number;
   suspicious?: boolean;
+  role?: "ORIGIN" | "INTERMEDIARY" | "MULE_CASHOUT" | "FEEDER" | "BENEFICIARY" | "COUNTERPARTY" | string;
+  inDegree?: number;
+  outDegree?: number;
 }
 
 export interface GraphEdge {

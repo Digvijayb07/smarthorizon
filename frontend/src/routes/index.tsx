@@ -5,7 +5,6 @@ import { ExplainabilitySection } from "@/components/landing/ExplainabilitySectio
 import { FAQSection } from "@/components/landing/FAQSection";
 import { FinalCTA } from "@/components/landing/FinalCTA";
 import { Footer } from "@/components/landing/Footer";
-import { GraphSection } from "@/components/landing/GraphSection";
 import { HeroSection } from "@/components/landing/HeroSection";
 import { HumanDecisionSection } from "@/components/landing/HumanDecisionSection";
 import { InvestigationFlow } from "@/components/landing/InvestigationFlow";
@@ -14,7 +13,6 @@ import { Navbar } from "@/components/landing/Navbar";
 import { ProblemSection } from "@/components/landing/ProblemSection";
 import { ReportSection } from "@/components/landing/ReportSection";
 import { RiskIntelligence } from "@/components/landing/RiskIntelligence";
-import { ThreatWatch } from "@/components/landing/ThreatWatch";
 import { TrustBar } from "@/components/landing/TrustBar";
 
 export const Route = createFileRoute("/")({
@@ -23,7 +21,7 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="gov-dashboard min-h-screen bg-background text-foreground">
       <Navbar />
 
       <main>
@@ -34,12 +32,10 @@ function Index() {
         <AgentArchitecture />
         <RiskIntelligence />
         <ExplainabilitySection />
-        <GraphSection />
         <ComplianceSection />
         <InvestigationFlow />
         <ReportSection />
         <HumanDecisionSection />
-        <ThreatWatch />
         <FAQSection />
         <FinalCTA />
       </main>

@@ -37,7 +37,7 @@ function backendCaseToUI(bc: BackendCase) {
     title: bc.transaction_id,
     alert: bc.recommended_action,
     openedAt: bc.opened_at,
-    risk: { score: bc.risk_score, level: riskLevel, value: Math.round(bc.risk_score), max: 100 },
+    risk: { score: bc.risk_score, level: riskLevel, value: bc.risk_score != null ? Math.round(bc.risk_score * 10) / 10 : 50, max: 100 },
     recommendation: toRecommendation(bc.recommended_action),
     status: bc.status,
   };

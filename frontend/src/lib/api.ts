@@ -195,15 +195,19 @@ export interface DecisionResponse {
 
 // ── API Functions ────────────────────────────────────────────────────────────
 
+export interface LoginResponse {
+  access_token: string;
+  token_type?: string;
+  expires_in?: number;
+  user: { id?: string; email: string; name: string; role: string };
+}
+
 /** Login and get auth token */
 export async function login(
   email: string,
   password: string,
-): Promise<{ access_token: string; user: { email: string; name: string; role: string } }> {
-  const data = await apiFetch<{
-    access_token: string;
-    user: { email: string; name: string; role: string };
-  }>("/api/auth/login", {
+): Promise<LoginResponse> {
+  const data = await apiFetch<LoginResponse>("/api/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
@@ -292,7 +296,94 @@ export function getStrDraft(caseId: string): Promise<{ case_id: string; str_draf
   return apiFetch(`/api/reports/str-draft/${encodeURIComponent(caseId)}`);
 }
 
+export interface CaseGraphNode {
+  id: string;
+  type?: string;
+  [key: string]: unknown;
+}
+
+export interface CaseGraphLink {
+  source: string;
+  target: string;
+  amount?: number;
+  transaction_id?: string;
+  channel?: string;
+  [key: string]: unknown;
+}
+
+export interface CaseGraphResponse {
+  case_id: string;
+  nodes: CaseGraphNode[];
+  links: CaseGraphLink[];
+  patterns: Array<{
+    type: string;
+    description: string;
+    severity?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | string;
+    node?: string;
+    nodes?: string[];
+    degree?: number;
+    count?: number;
+    total_amount?: number;
+  }>;
+  network_risk?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  network_risk_summary?: string;
+  transaction_count: number;
+  node_count: number;
+  edge_count: number;
+  primary_sender?: string;
+  primary_receiver?: string;
+}
+
+/** Get transaction network graph for a case from backend */
+export function getCaseGraph(caseId: string): Promise<CaseGraphResponse> {
+  return apiFetch(`/api/graph/${encodeURIComponent(caseId)}`);
+}
+
 /** Health check */
 export function healthCheck(): Promise<{ status: string; model: string }> {
   return apiFetch("/health");
 }
+
+// ── User Management ──────────────────────────────────────────────────────────
+
+export interface PlatformUser {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  status: string;
+  created_at: string;
+  lastActive?: string;
+}
+
+export interface UsersResponse {
+  users: PlatformUser[];
+  count: number;
+}
+
+export async function getUsers(): Promise<PlatformUser[]> {
+  const data = await apiFetch<UsersResponse>("/api/users/");
+  return data.users || [];
+}
+
+export async function createUser(payload: {
+  name: string;
+  email: string;
+  role: string;
+  password?: string;
+}): Promise<PlatformUser> {
+  const data = await apiFetch<{ message: string; user: PlatformUser }>("/api/users/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return data.user;
+}
+
+export async function updateUserStatus(userId: string, status: string): Promise<{ message: string }> {
+  return apiFetch<{ message: string }>(`/api/users/${encodeURIComponent(userId)}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}
+
+

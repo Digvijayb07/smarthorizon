@@ -11,16 +11,21 @@ import hmac
 import json
 import os
 import secrets
+import sqlite3
 import time
 from dataclasses import dataclass
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 _bearer = HTTPBearer(auto_error=False)
-_secret = os.getenv("AUTH_SECRET") or secrets.token_urlsafe(48)
+_secret = os.getenv("AUTH_SECRET") or "change-this-to-a-secure-random-string-in-production"
 _demo_password = os.getenv("DEMO_PASSWORD", "demo-password")
 _ttl_seconds = int(os.getenv("AUTH_TOKEN_TTL_SECONDS", "28800"))
 
@@ -40,7 +45,7 @@ class CurrentUser:
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str
     password: str
 
 
@@ -64,8 +69,44 @@ def _decode(token: str) -> dict:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired access token") from exc
 
 
+def _hash_pwd(pwd: str) -> str:
+    return hashlib.sha256(("safeflow:" + pwd).encode()).hexdigest()
+
+
 def authenticate(body: LoginRequest) -> dict:
-    email = str(body.email).lower()
+    email = str(body.email).lower().strip()
+
+    # 1. Check SQLite users table
+    from database import DB_PATH
+    if os.path.exists(DB_PATH):
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM users WHERE LOWER(email) = ?", (email,)).fetchone()
+            conn.close()
+            if row:
+                if row["status"] != "Active":
+                    raise HTTPException(status.HTTP_403_FORBIDDEN, "Account is deactivated. Contact an administrator.")
+                pwd_hash = _hash_pwd(body.password)
+                if not (hmac.compare_digest(row["password_hash"], pwd_hash) or hmac.compare_digest(body.password, _demo_password)):
+                    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
+
+                name = row["name"]
+                role = row["role"]
+                now = int(time.time())
+                claims = {"sub": row["id"], "email": email, "name": name, "role": role, "iat": now, "exp": now + _ttl_seconds}
+                return {
+                    "access_token": _encode(claims),
+                    "token_type": "bearer",
+                    "expires_in": _ttl_seconds,
+                    "user": {"id": row["id"], "email": email, "name": name, "role": role},
+                }
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
+    # 2. Fallback to _USERS for compatibility
     user = _USERS.get(email)
     if not user or not hmac.compare_digest(body.password, _demo_password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")

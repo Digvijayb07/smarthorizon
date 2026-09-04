@@ -10,7 +10,16 @@ import sqlite3
 from datetime import datetime
 
 
-DB_PATH = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./horizon.db").replace("sqlite+aiosqlite:///./", "")
+_raw_db = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./horizon.db").replace("sqlite+aiosqlite:///./", "")
+if os.path.isabs(_raw_db):
+    DB_PATH = _raw_db
+else:
+    _backend_dir = os.path.dirname(os.path.abspath(__file__))
+    _candidate = os.path.join(_backend_dir, _raw_db)
+    if os.path.exists(_candidate) or not os.path.exists(_raw_db):
+        DB_PATH = _candidate
+    else:
+        DB_PATH = os.path.abspath(_raw_db)
 
 _CASE_STATUSES = {"OPEN", "MONITORING", "ESCALATED", "CLOSED"}
 
@@ -104,6 +113,41 @@ def init_db():
             FOREIGN KEY (case_id) REFERENCES cases(case_id)
         )
     """)
+
+    # ── Users (Role-based authentication & directory) ───────────────────────────
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id            TEXT PRIMARY KEY,
+            name          TEXT NOT NULL,
+            email         TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role          TEXT NOT NULL CHECK (role IN ('administrator', 'manager', 'investigator')),
+            status        TEXT DEFAULT 'Active',
+            created_at    TEXT NOT NULL
+        )
+    """)
+
+    # Seed default users if empty
+    import hashlib
+    def _hash_pwd(pwd: str) -> str:
+        return hashlib.sha256(("safeflow:" + pwd).encode()).hexdigest()
+
+    default_pwd_hash = _hash_pwd("demo-password")
+    now_iso = datetime.utcnow().isoformat()
+
+    default_users = [
+        ("usr-admin", "System Administrator", "admin@smarthorizon.ai", default_pwd_hash, "administrator", "Active", now_iso),
+        ("usr-alex", "Alex Chen", "alex.chen@smarthorizon.ai", default_pwd_hash, "administrator", "Active", now_iso),
+        ("usr-sarah", "Sarah Chen", "sarah.chen@smarthorizon.ai", default_pwd_hash, "manager", "Active", now_iso),
+        ("usr-marcus", "Marcus Johnson", "marcus.johnson@smarthorizon.ai", default_pwd_hash, "investigator", "Active", now_iso),
+        ("usr-priya", "Priya Patel", "priya.patel@smarthorizon.ai", default_pwd_hash, "investigator", "Active", now_iso),
+    ]
+
+    for u in default_users:
+        c.execute("""
+            INSERT OR IGNORE INTO users (id, name, email, password_hash, role, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, u)
 
     conn.commit()
     conn.close()

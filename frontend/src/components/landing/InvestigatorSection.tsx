@@ -60,12 +60,13 @@ export function InvestigatorSection() {
                 aria-hidden
               />
               <div
-                className="relative flex size-32 flex-col items-center justify-center gap-1 rounded-full text-primary-foreground md:size-40"
-                style={{ background: "var(--gradient-cta)" }}
+                className="relative flex size-32 flex-col items-center justify-center gap-1 rounded-full border border-primary/20 bg-primary text-primary-foreground shadow-sm md:size-40 dark:border-white/10 dark:bg-slate-900"
               >
                 <ShieldCheck className="size-8 text-teal" aria-hidden />
-                <span className="eyebrow text-center text-white/80">Digital
-                  <br />Investigator
+                <span className="eyebrow text-center text-primary-foreground/80 dark:text-white/80">
+                  Digital
+                  <br />
+                  Investigator
                 </span>
               </div>
             </div>

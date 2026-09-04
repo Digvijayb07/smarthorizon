@@ -37,29 +37,24 @@ interface NavItem {
 
 const roleNavMap: Record<RoleId, NavItem[]> = {
   investigator: [
+    { id: "dashboard", label: "Dashboard", icon: <Briefcase className="size-4" />, href: "/dashboard" },
     { id: "cases", label: "Cases", icon: <Briefcase className="size-4" />, href: "/dashboard/cases" },
-    { id: "investigation", label: "Investigation", icon: <Microscope className="size-4" />, href: "/dashboard/investigation" },
-    { id: "risk", label: "Risk Intelligence", icon: <AlertTriangle className="size-4" />, href: "/dashboard/risk" },
-    { id: "graph", label: "Graph", icon: <Network className="size-4" />, href: "/dashboard/graph" },
-    { id: "compliance", label: "Compliance", icon: <FileCheck className="size-4" />, href: "/dashboard/compliance" },
     { id: "reports", label: "Reports", icon: <FileText className="size-4" />, href: "/dashboard/reports" },
-    { id: "threat", label: "Threat Watch", icon: <Eye className="size-4" />, href: "/dashboard/threats" },
+    { id: "audit", label: "Audit Trail", icon: <ClipboardList className="size-4" />, href: "/dashboard/audit" },
   ],
   manager: [
+    { id: "dashboard", label: "Dashboard", icon: <Briefcase className="size-4" />, href: "/dashboard" },
     { id: "cases", label: "Cases", icon: <Briefcase className="size-4" />, href: "/dashboard/cases" },
-    { id: "approvals", label: "Approvals", icon: <CheckSquare className="size-4" />, href: "/dashboard/approvals" },
-    { id: "escalations", label: "Escalations", icon: <TrendingUp className="size-4" />, href: "/dashboard/escalations" },
     { id: "reports", label: "Reports", icon: <FileText className="size-4" />, href: "/dashboard/reports" },
-    { id: "compliance", label: "Compliance", icon: <FileCheck className="size-4" />, href: "/dashboard/compliance" },
-    { id: "audit", label: "Audit", icon: <ClipboardList className="size-4" />, href: "/dashboard/audit" },
+    { id: "audit", label: "Audit Trail", icon: <ClipboardList className="size-4" />, href: "/dashboard/audit" },
+    { id: "users", label: "User Directory", icon: <Users className="size-4" />, href: "/dashboard/users" },
   ],
   administrator: [
-    { id: "users", label: "Users", icon: <Users className="size-4" />, href: "/dashboard/users" },
-    { id: "roles", label: "Roles", icon: <Shield className="size-4" />, href: "/dashboard/roles" },
-    { id: "integrations", label: "Integrations", icon: <Sliders className="size-4" />, href: "/dashboard/integrations" },
-    { id: "security", label: "Security", icon: <Lock className="size-4" />, href: "/dashboard/security" },
-    { id: "audit-logs", label: "Audit Logs", icon: <History className="size-4" />, href: "/dashboard/audit-logs" },
-    { id: "settings", label: "Settings", icon: <Settings className="size-4" />, href: "/dashboard/settings" },
+    { id: "dashboard", label: "Dashboard", icon: <Briefcase className="size-4" />, href: "/dashboard" },
+    { id: "users", label: "User Directory", icon: <Users className="size-4" />, href: "/dashboard/users" },
+    { id: "cases", label: "Cases", icon: <Briefcase className="size-4" />, href: "/dashboard/cases" },
+    { id: "reports", label: "Reports", icon: <FileText className="size-4" />, href: "/dashboard/reports" },
+    { id: "audit", label: "Audit Trail", icon: <ClipboardList className="size-4" />, href: "/dashboard/audit" },
   ],
 };
 

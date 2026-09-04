@@ -11,8 +11,7 @@ import { StatCard } from "./StatCard";
 import { demoCase } from "@/data/mock-investigation";
 import { cn } from "@/lib/utils";
 import type { Case } from "@/types/investigation";
-import { AgentStatus } from "./AgentStatus";
-import { getCaseStats, listCases } from "@/lib/api";
+import { getCaseStats, listCases, getAuditLog } from "@/lib/api";
 
 // Generate mock cases based on the demo case pattern
 const generateMockCases = (): Case[] => {
@@ -97,34 +96,69 @@ export function InvestigatorDashboard({ userRole = "investigator" }: Investigato
     staleTime: 15_000,
   });
 
+  // Fetch real cases from backend SQLite
+  const { data: casesData } = useQuery({
+    queryKey: ["recentCases"],
+    queryFn: () => listCases({ limit: 6 }),
+    staleTime: 15_000,
+  });
+
+  // Fetch real audit entries from backend SQLite
+  const { data: auditData } = useQuery({
+    queryKey: ["recentAudit"],
+    queryFn: () => getAuditLog(),
+    staleTime: 15_000,
+  });
+
+  const displayCases: Case[] =
+    casesData?.cases && casesData.cases.length > 0
+      ? casesData.cases.map((c) => ({
+          id: c.case_id,
+          alert:
+            c.transaction?.type
+              ? `${c.transaction.type} transaction alert`
+              : c.analyst_notes || "Automated telemetry alert",
+          openedAt: c.opened_at,
+          risk: {
+            value: Math.round(c.risk_score),
+            max: 100,
+            level: (c.risk_band?.toUpperCase() as any) || "MEDIUM",
+            factors: [],
+          },
+          recommendation: (c.recommended_action?.toUpperCase() as any) || "VERIFY",
+          evidence: [],
+          transactionId: c.transaction_id,
+        }))
+      : mockCases;
+
   // Use API stats when available, otherwise compute from mock data
   const openCases = stats
     ? (stats.by_status.find((s) => s.status === "OPEN")?.count ?? stats.total)
-    : mockCases.length;
+    : displayCases.length;
   const highRiskCases = stats
     ? ((stats.by_band.find((b) => b.risk_band === "HIGH")?.count ?? 0) +
        (stats.by_band.find((b) => b.risk_band === "CRITICAL")?.count ?? 0))
-    : mockCases.filter((c) => c.risk.level === "HIGH" || c.risk.level === "CRITICAL").length;
+    : displayCases.filter((c) => c.risk.level === "HIGH" || c.risk.level === "CRITICAL").length;
   const pendingReviews = stats
     ? (stats.by_status.find((s) => s.status === "OPEN")?.count ?? 0)
-    : mockCases.filter((c) => c.recommendation === "VERIFY").length;
+    : displayCases.filter((c) => c.recommendation === "VERIFY").length;
   const escalatedCases = stats
     ? (stats.by_status.find((s) => s.status === "ESCALATED")?.count ?? 0)
-    : mockCases.filter((c) => c.recommendation === "ESCALATE").length;
+    : displayCases.filter((c) => c.recommendation === "ESCALATE").length;
 
   const riskDistribution = {
     HIGH: stats
       ? (stats.by_band.find((b) => b.risk_band === "HIGH")?.count ?? 0)
-      : mockCases.filter((c) => c.risk.level === "HIGH").length,
+      : displayCases.filter((c) => c.risk.level === "HIGH").length,
     MEDIUM: stats
       ? (stats.by_band.find((b) => b.risk_band === "MEDIUM")?.count ?? 0)
-      : mockCases.filter((c) => c.risk.level === "MEDIUM").length,
+      : displayCases.filter((c) => c.risk.level === "MEDIUM").length,
     LOW: stats
       ? (stats.by_band.find((b) => b.risk_band === "LOW")?.count ?? 0)
-      : mockCases.filter((c) => c.risk.level === "LOW").length,
+      : displayCases.filter((c) => c.risk.level === "LOW").length,
   };
 
-  const activityEvents = [
+  const defaultActivityEvents = [
     {
       id: "evt-1",
       type: "escalate",
@@ -154,6 +188,27 @@ export function InvestigatorDashboard({ userRole = "investigator" }: Investigato
       icon: AlertTriangle,
     },
   ];
+
+  const activityEvents =
+    auditData && auditData.length > 0
+      ? auditData.slice(0, 5).map((entry, idx) => ({
+          id: entry.id || `audit-${idx}`,
+          type: entry.action.toLowerCase().includes("escalat")
+            ? "escalate"
+            : entry.action.toLowerCase().includes("decision") || entry.action.toLowerCase().includes("approv")
+            ? "complete"
+            : "alert",
+          description: `${entry.action}: ${entry.details || `Case ${entry.case_id}`}`,
+          time: entry.timestamp
+            ? new Date(entry.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            : "Recently",
+          icon: entry.action.toLowerCase().includes("escalat")
+            ? AlertTriangle
+            : entry.action.toLowerCase().includes("decision") || entry.action.toLowerCase().includes("approv")
+            ? CheckCircle2
+            : TrendingUp,
+        }))
+      : defaultActivityEvents;
 
   return (
     <div className="space-y-6">
@@ -241,7 +296,7 @@ export function InvestigatorDashboard({ userRole = "investigator" }: Investigato
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {mockCases.map((caseItem) => (
+                {displayCases.map((caseItem) => (
                   <tr key={caseItem.id} className="hover:bg-muted/20 transition-colors">
                     <td className="px-5 py-3.5">
                       <Link
@@ -283,8 +338,6 @@ export function InvestigatorDashboard({ userRole = "investigator" }: Investigato
           </div>
         </div>
       </section>
-
-      <AgentStatus />
 
       {/* Investigation Activity */}
       <section>

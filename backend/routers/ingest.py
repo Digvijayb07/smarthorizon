@@ -31,7 +31,7 @@ from state import app_state
 # In production: use HMAC-SHA256 webhook signature verification.
 router = APIRouter()
 
-THRESHOLD_HIGH = 65.0      # risk_score >= this → create case
+THRESHOLD_HIGH = 65.0      # risk_score >= this → create case (CRITICAL & HIGH only)
 THRESHOLD_CRITICAL = 85.0  # risk_score >= this → CRITICAL band
 
 
@@ -79,6 +79,7 @@ def _build_score_input(txn: IncomingTransaction) -> dict:
     """
     Map ledger transaction fields to the format expected by score_transaction().
     Uses safe defaults for fields the ledger doesn't know (balance data).
+    Uses `is not None` (not `or`) so legitimate 0-balance values are preserved.
     """
     step = _derive_step(txn.timestamp)
     return {
@@ -87,11 +88,11 @@ def _build_score_input(txn: IncomingTransaction) -> dict:
         "type": "TRANSFER",          # ledger transactions are all transfers
         "amount": txn.amount,
         "nameOrig": txn.sender_account_id,
-        "oldbalanceOrg": txn.sender_balance_before or 0.0,
-        "newbalanceOrig": txn.sender_balance_after or 0.0,
+        "oldbalanceOrg": txn.sender_balance_before if txn.sender_balance_before is not None else 0.0,
+        "newbalanceOrig": txn.sender_balance_after if txn.sender_balance_after is not None else 0.0,
         "nameDest": txn.receiver_account_id,
-        "oldbalanceDest": txn.receiver_balance_before or 0.0,
-        "newbalanceDest": txn.receiver_balance_after or 0.0,
+        "oldbalanceDest": txn.receiver_balance_before if txn.receiver_balance_before is not None else 0.0,
+        "newbalanceDest": txn.receiver_balance_after if txn.receiver_balance_after is not None else 0.0,
         "is_new_payee": False,
         "is_vpn": False,
         "location_city": "Unknown",

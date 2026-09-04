@@ -100,9 +100,9 @@ Act: Prevention of Money Laundering Act (PMLA), 2002
             </div>
           </div>
           <Button asChild size="sm" className="gap-2 bg-violet text-white">
-            <Link to="/dashboard/investigation">
+            <Link to="/dashboard/cases">
               <FileText className="size-4" />
-              Generate New Case Report
+              View Active Cases
             </Link>
           </Button>
         </div>

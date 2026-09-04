@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
@@ -17,6 +17,9 @@ import { Loader2 } from "lucide-react";
 import type { Case, InvestigationReport, RiskLevel } from "@/types/investigation";
 
 export const Route = createFileRoute("/dashboard/investigation")({
+  beforeLoad: () => {
+    throw redirect({ to: "/dashboard/cases" });
+  },
   component: InvestigationPage,
 });
 

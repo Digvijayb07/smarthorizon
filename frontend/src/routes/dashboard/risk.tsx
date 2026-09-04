@@ -1,10 +1,13 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { AlertTriangle } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { RiskIntelligencePanel } from "@/components/investigation/RiskIntelligencePanel";
 import { demoCase } from "@/data/mock-investigation";
 
 export const Route = createFileRoute("/dashboard/risk")({
+  beforeLoad: () => {
+    throw redirect({ to: "/dashboard/cases" });
+  },
   component: RiskPage,
 });
 

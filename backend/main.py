@@ -9,12 +9,13 @@ import os
 import pickle
 import json
 from dotenv import load_dotenv
+
+load_dotenv(override=True)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import init_db
 from auth import LoginRequest, authenticate
-
-load_dotenv(override=True)
 
 # Ensure database tables exist
 init_db()
@@ -71,7 +72,7 @@ app.add_middleware(
 )
 
 # Routers
-from routers import cases, score, graph, investigate, reports, audit
+from routers import cases, score, graph, investigate, reports, audit, users
 from routers import ingest
 
 @app.post("/api/auth/login")
@@ -84,6 +85,7 @@ app.include_router(graph.router, prefix="/api/graph", tags=["Graph Agent"])
 app.include_router(investigate.router, prefix="/api/investigate", tags=["Investigation"])
 app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
 app.include_router(audit.router, prefix="/api/audit", tags=["Audit"])
+app.include_router(users.router, prefix="/api/users", tags=["Users"])
 app.include_router(ingest.router, prefix="/api", tags=["Ledger Ingest"])
 
 @app.get("/")

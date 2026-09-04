@@ -16,6 +16,8 @@ import {
 import { StatCard } from "./StatCard";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useQuery } from "@tanstack/react-query";
+import { getUsers, healthCheck } from "@/lib/api";
 
 // System service health status
 type ServiceStatus = "operational" | "warning" | "unavailable";
@@ -262,9 +264,22 @@ export interface AdminDashboardProps {
 }
 
 export function AdminDashboard({ userRole = "administrator" }: AdminDashboardProps) {
+  const { data: dbUsers } = useQuery({ queryKey: ["users"], queryFn: getUsers, refetchInterval: 15000 });
   const systemServices = generateSystemServices();
   const securityEvents = generateSecurityEvents();
-  const adminUsers = generateAdminUsers();
+  const staticUsers = generateAdminUsers();
+
+  const adminUsers: AdminUser[] = dbUsers && dbUsers.length > 0
+    ? dbUsers.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role as any,
+        status: (u.status.toLowerCase() === "active" ? "active" : "inactive") as any,
+        lastActive: u.created_at || new Date().toISOString(),
+        joinDate: u.created_at || new Date().toISOString(),
+      }))
+    : staticUsers;
 
   const activeUsers = adminUsers.filter((u) => u.status === "active").length;
   const activeSessions = adminUsers.filter((u) => u.status === "active").length;

@@ -201,13 +201,20 @@ async def get_case(
 async def submit_decision(
     case_id: str,
     body: CaseDecision,
-    user: CurrentUser = Depends(require_roles("manager", "administrator")),
+    user: CurrentUser = Depends(require_roles("manager", "administrator", "investigator")),
     conn: sqlite3.Connection = Depends(get_db),
 ):
     """
     Analyst submits a decision on a case.
     analyst_id is derived from the authenticated user — never accepted from client input.
+    Investigators can ESCALATE; Managers/Admins hold signatory authority for APPROVE_BLOCK/DISMISS.
     """
+    if user.role == "investigator" and body.decision != "ESCALATE":
+        raise HTTPException(
+            403,
+            "Maker-Checker Policy: Investigators can only escalate cases to management. Switch to Manager role to sign off on Block or Dismiss.",
+        )
+
     case = conn.execute(
         "SELECT * FROM cases WHERE case_id = ?", (case_id,)
     ).fetchone()

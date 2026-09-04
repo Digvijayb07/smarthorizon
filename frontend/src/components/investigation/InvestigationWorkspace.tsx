@@ -14,12 +14,15 @@ import {
   Download,
   Copy,
   FileCheck,
+  Lock,
+  ArrowRight,
 } from "lucide-react";
 import { AgentStatus, type InvestigationAgentProgress } from "@/components/dashboard/AgentStatus";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Agent, Case, GraphEdge, GraphNode, InvestigationReport, RegulatorySource } from "@/types/investigation";
 import type { BackendCase } from "@/lib/api";
+import { useRole } from "@/context/RoleContext";
 import { InvestigationGraph } from "./InvestigationGraph";
 import { RiskIntelligencePanel } from "./RiskIntelligencePanel";
 
@@ -28,6 +31,15 @@ export interface InvestigationWorkspaceProps {
   evidenceChips: string[];
   nodes: GraphNode[];
   edges: GraphEdge[];
+  patterns?: Array<{
+    type: string;
+    description: string;
+    severity?: string;
+    count?: number;
+    total_amount?: number;
+  }>;
+  networkRisk?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | string;
+  networkRiskSummary?: string;
   agents: Agent[];
   regulatorySources: RegulatorySource[];
   report: InvestigationReport;
@@ -37,6 +49,7 @@ export interface InvestigationWorkspaceProps {
   onDecision?: (decision: string, notes?: string) => void;
   isSubmittingDecision?: boolean;
   decisionSuccess?: string | null;
+  decisionError?: string | null;
   strDraft?: string | null;
 }
 
@@ -47,6 +60,9 @@ export function InvestigationWorkspace({
   evidenceChips,
   nodes,
   edges,
+  patterns = [],
+  networkRisk,
+  networkRiskSummary,
   agents,
   regulatorySources,
   report,
@@ -56,8 +72,10 @@ export function InvestigationWorkspace({
   onDecision,
   isSubmittingDecision = false,
   decisionSuccess = null,
+  decisionError = null,
   strDraft = null,
 }: InvestigationWorkspaceProps) {
+  const { role, loginWithRole } = useRole();
   const [localDecision, setLocalDecision] = useState<string | null>(null);
   const [copiedStr, setCopiedStr] = useState(false);
 
@@ -192,8 +210,18 @@ export function InvestigationWorkspace({
 
       {/* Graph and Risk Panels */}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <InvestigationGraph nodes={nodes} edges={edges} />
-        <RiskIntelligencePanel risk={caseData.risk} />
+        <InvestigationGraph
+          nodes={nodes}
+          edges={edges}
+          patterns={patterns}
+          networkRisk={networkRisk}
+          networkRiskSummary={networkRiskSummary}
+        />
+        <RiskIntelligencePanel
+          risk={caseData.risk}
+          networkRisk={networkRisk}
+          networkRiskSummary={networkRiskSummary}
+        />
       </div>
 
       {/* AI Agents Pipeline Status */}
@@ -336,14 +364,24 @@ export function InvestigationWorkspace({
           <p className="text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase font-mono">Regulatory context</p>
           <h2 id="regulatory-title" className="mt-1 text-lg font-bold tracking-tight text-foreground">Sources consulted</h2>
           <p className="mt-1.5 text-xs text-muted-foreground">Grounding regulatory documents available for investigator review.</p>
-          <ul className="mt-4 divide-y divide-border">
-            {regulatorySources.map((source) => (
-              <li key={source.code} className="flex gap-3 py-2.5 first:pt-0">
-                <span className="font-mono text-xs font-bold text-violet">{source.code}</span>
-                <span className="text-xs text-foreground">{source.name}</span>
-              </li>
-            ))}
-          </ul>
+          {recommendationReasoning ? (
+            <ul className="mt-4 divide-y divide-border">
+              {regulatorySources.map((source) => (
+                <li key={source.code} className="flex gap-3 py-2.5 first:pt-0">
+                  <span className="font-mono text-xs font-bold text-violet">{source.code}</span>
+                  <span className="text-xs text-foreground">{source.name}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="mt-4 flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-8 text-center">
+              <FileCheck className="size-6 text-muted-foreground/40 mb-1.5" />
+              <p className="text-xs font-semibold text-muted-foreground">No Regulatory Sources Consulted Yet</p>
+              <p className="mt-1 text-[11px] text-muted-foreground max-w-xs">
+                Regulatory statutes (RBI circulars, PMLA rules, FATF guidelines) will be cross-referenced during the AI investigation.
+              </p>
+            </div>
+          )}
         </section>
       </div>
 
@@ -365,54 +403,110 @@ export function InvestigationWorkspace({
               Backed by live SQLite audit logging and FIU-IND compliance rules.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant={localDecision === "Block" ? "destructive" : "outline"}
-              disabled={isSubmittingDecision}
-              onClick={() => handleDecisionClick("Block", "APPROVE_BLOCK")}
-              className="gap-1.5 text-xs border-risk-high/30 hover:bg-risk-high/10 text-risk-high"
-            >
-              <AlertTriangle className="size-4" />
-              {isSubmittingDecision && localDecision === "Block" ? "Submitting..." : "Block & Report"}
-            </Button>
-            <Button
-              type="button"
-              variant={localDecision === "Monitor" ? "default" : "outline"}
-              disabled={isSubmittingDecision}
-              onClick={() => handleDecisionClick("Monitor", "APPROVE_FLAG")}
-              className="gap-1.5 text-xs border-risk-medium/30 hover:bg-risk-medium/10 text-risk-medium"
-            >
-              <ClipboardCheck className="size-4" />
-              Flag for Monitoring
-            </Button>
-            <Button
-              type="button"
-              variant={localDecision === "Dismiss" ? "default" : "outline"}
-              disabled={isSubmittingDecision}
-              onClick={() => handleDecisionClick("Dismiss", "DISMISS")}
-              className="gap-1.5 text-xs border-risk-low/30 hover:bg-risk-low/10 text-risk-low"
-            >
-              <ShieldCheck className="size-4" />
-              Dismiss Case
-            </Button>
-            <Button
-              type="button"
-              variant={localDecision === "Escalate" ? "default" : "outline"}
-              disabled={isSubmittingDecision}
-              onClick={() => handleDecisionClick("Escalate", "ESCALATE")}
-              className="gap-1.5 text-xs bg-violet text-white hover:bg-violet/90"
-            >
-              Escalate to Manager
-            </Button>
+          <div className="flex flex-col items-start sm:items-end gap-2">
+            {!recommendationReasoning && (
+              <div className="flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] text-amber-400 font-medium">
+                <Lock className="size-3 shrink-0" />
+                <span>Run AI Investigation above to unlock decision controls</span>
+              </div>
+            )}
+            <div className="flex flex-col items-start sm:items-end gap-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant={localDecision === "Block" ? "destructive" : "outline"}
+                  disabled={isSubmittingDecision || !recommendationReasoning}
+                  onClick={() => handleDecisionClick("Block", "APPROVE_BLOCK")}
+                  className={cn(
+                    "gap-1.5 text-xs border-risk-high/30 text-risk-high",
+                    recommendationReasoning ? "hover:bg-risk-high/10" : "opacity-50 cursor-not-allowed"
+                  )}
+                >
+                  <AlertTriangle className="size-4" />
+                  {isSubmittingDecision && localDecision === "Block" ? "Submitting..." : "Block & Report"}
+                </Button>
+                <Button
+                  type="button"
+                  variant={localDecision === "Monitor" ? "default" : "outline"}
+                  disabled={isSubmittingDecision || !recommendationReasoning}
+                  onClick={() => handleDecisionClick("Monitor", "APPROVE_FLAG")}
+                  className={cn(
+                    "gap-1.5 text-xs border-risk-medium/30 text-risk-medium",
+                    recommendationReasoning ? "hover:bg-risk-medium/10" : "opacity-50 cursor-not-allowed"
+                  )}
+                >
+                  <ClipboardCheck className="size-4" />
+                  Flag for Monitoring
+                </Button>
+                <Button
+                  type="button"
+                  variant={localDecision === "Dismiss" ? "default" : "outline"}
+                  disabled={isSubmittingDecision || !recommendationReasoning}
+                  onClick={() => handleDecisionClick("Dismiss", "DISMISS")}
+                  className={cn(
+                    "gap-1.5 text-xs border-risk-low/30 text-risk-low",
+                    recommendationReasoning ? "hover:bg-risk-low/10" : "opacity-50 cursor-not-allowed"
+                  )}
+                >
+                  <ShieldCheck className="size-4" />
+                  Dismiss Case
+                </Button>
+                <Button
+                  type="button"
+                  variant={localDecision === "Escalate" ? "default" : "outline"}
+                  disabled={isSubmittingDecision || !recommendationReasoning}
+                  onClick={() => handleDecisionClick("Escalate", "ESCALATE")}
+                  className={cn(
+                    "gap-1.5 text-xs bg-violet text-white",
+                    recommendationReasoning ? "hover:bg-violet/90" : "opacity-50 cursor-not-allowed"
+                  )}
+                >
+                  Escalate to Manager
+                </Button>
+              </div>
+              <span className="text-[10px] text-muted-foreground font-mono">
+                {role === "investigator"
+                  ? "• Role: Investigator (Can Escalate · Sign-off requires Manager)"
+                  : "• Role: Manager (Signatory authority active)"}
+              </span>
+            </div>
           </div>
         </div>
-        {(decisionSuccess || localDecision) && (
+
+        {decisionSuccess && (
           <div className="mt-4 flex items-center gap-2 rounded-xl border border-teal/30 bg-teal/10 p-3 text-xs font-semibold text-teal">
-            <CheckCircle2 className="size-4" />
+            <CheckCircle2 className="size-4 shrink-0" />
             <span>
-              Decision recorded: {decisionSuccess || localDecision} (Audit log entry committed).
+              {decisionSuccess === "APPROVE_BLOCK"
+                ? "Account Blocked & FIU-IND STR Filed. Case status marked CLOSED. Immutable audit trail entry committed."
+                : decisionSuccess === "APPROVE_FLAG"
+                ? "Account Flagged for Enhanced Due Diligence (EDD). Case status marked MONITORING. Audit trail entry committed."
+                : decisionSuccess === "DISMISS"
+                ? "Case Dismissed as False Positive. Case status marked CLOSED. Audit trail entry committed."
+                : decisionSuccess === "ESCALATE"
+                ? "Case Escalated to Senior Compliance Manager (Sarah Chen). Case status updated to ESCALATED. Audit trail entry committed."
+                : `Decision recorded: ${decisionSuccess} (Audit trail entry committed).`}
             </span>
+          </div>
+        )}
+
+        {decisionError && (
+          <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-400">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="size-4 shrink-0 text-amber-400" />
+              <span>{decisionError}</span>
+            </div>
+            {role === "investigator" && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => loginWithRole("manager")}
+                className="gap-1.5 border-amber-500/30 text-amber-300 hover:bg-amber-500/20 text-xs h-7 shrink-0"
+              >
+                <span>Switch to Manager View & Sign Off</span>
+                <ArrowRight className="size-3" />
+              </Button>
+            )}
           </div>
         )}
       </section>

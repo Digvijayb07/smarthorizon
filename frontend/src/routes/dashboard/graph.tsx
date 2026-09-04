@@ -1,10 +1,13 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { Network } from "lucide-react";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
 import { InvestigationGraph } from "@/components/investigation/InvestigationGraph";
 import { graphNodes, graphEdges } from "@/data/mock-investigation";
 
 export const Route = createFileRoute("/dashboard/graph")({
+  beforeLoad: () => {
+    throw redirect({ to: "/dashboard/cases" });
+  },
   component: GraphPage,
 });
 
