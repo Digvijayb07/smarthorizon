@@ -194,7 +194,7 @@ async def run_investigation(
 ):
     """
     Autonomous Multi-Agent Investigation Pipeline:
-    1. scoreAgent: XGBoost 23-feature inference + SHAP attribution (via centralized score_transaction)
+    1. scoreAgent: XGBoost 14-feature inference + SHAP attribution (via centralized score_transaction)
     2. contextAgent: Multi-transaction graph analysis via graph_agent with real pattern detection
     3. reasonAgent: Gemini analysis grounded in RBI/PMLA regulations
     4. decisionAgent: Action recommendation & idempotent case creation
@@ -221,10 +221,15 @@ async def run_investigation(
     txn_dict = dict(txn)
 
     # ── 1. scoreAgent (centralized scoring) ───────────────────────────────────
+    sender_account = txn_dict.get("sender_account") or txn_dict.get("sender_id", "UNKNOWN")
+    receiver_account = txn_dict.get("receiver_account") or txn_dict.get("receiver_id", "UNKNOWN")
+
     txn_for_model = {
         "step": txn_dict.get("step", 1),
         "type": txn_dict.get("type", "TRANSFER"),
         "amount": txn_dict.get("amount", 0),
+        "nameOrig": sender_account,
+        "nameDest": receiver_account,
         "oldbalanceOrg": txn_dict.get("old_balance_orig", 0),
         "newbalanceOrig": txn_dict.get("new_balance_orig", 0),
         "oldbalanceDest": txn_dict.get("old_balance_dest", 0),
@@ -378,10 +383,10 @@ async def run_investigation(
             score_result["recommended_action"] = existing_case["recommended_action"]
         else:
             score_result["recommended_action"] = "ESCALATE" if network_risk in ("CRITICAL", "HIGH") else "BLOCK"
-    elif final_risk_score >= 60.0:
+    elif final_risk_score >= 50.0:
         score_result["risk_band"] = "HIGH"
         score_result["recommended_action"] = existing_case["recommended_action"] if (existing_case and existing_case["recommended_action"]) else "FLAG"
-    elif final_risk_score >= 30.0:
+    elif final_risk_score >= 20.0:
         score_result["risk_band"] = "MEDIUM"
         score_result["recommended_action"] = existing_case["recommended_action"] if (existing_case and existing_case["recommended_action"]) else "MONITOR"
     else:

@@ -2,81 +2,59 @@
   "model_file": "fraud_model.pkl",
   "feature_columns": [
     "step",
-    "type_encoded",
     "amount",
-    "oldbalanceOrg",
-    "newbalanceOrig",
-    "oldbalanceDest",
-    "newbalanceDest",
-    "balance_diff_orig",
-    "balance_diff_dest",
-    "error_balance_orig",
-    "error_balance_dest",
-    "amount_to_orig_ratio",
-    "amount_to_dest_ratio",
-    "orig_balance_zeroed",
-    "dest_was_zero",
-    "is_large_amount",
-    "is_very_large",
-    "step_mod_24",
-    "is_night_txn",
-    "is_transfer",
-    "is_cashout",
-    "dest_unchanged",
-    "amount_dest_balance_ratio"
+    "isFlaggedFraud",
+    "hour",
+    "is_night",
+    "orig_txn_count",
+    "dest_txn_count",
+    "orig_counterparty_degree",
+    "dest_counterparty_degree",
+    "type_CASH_IN",
+    "type_CASH_OUT",
+    "type_DEBIT",
+    "type_PAYMENT",
+    "type_TRANSFER"
   ],
   "target_column": "isFraud",
-  "feature_thresholds": {
-    "large_amount": 1065449.8470000003,
-    "very_large_amount": 5305972.058500052
-  },
-  "threshold": 0.5,
+  "threshold": 0.50,
   "metrics": {
-    "roc_auc": 0.9994,
-    "f1_score": 0.9765,
-    "total_training_samples": 205500
+    "roc_auc": 0.9694,
+    "f1_score": 0.7782,
+    "total_training_samples": 128001
   },
   "risk_bands": {
     "LOW": [
       0.0,
-      0.3
+      0.20
     ],
     "MEDIUM": [
-      0.3,
-      0.6
+      0.20,
+      0.50
     ],
     "HIGH": [
-      0.6,
-      0.8
+      0.50,
+      0.80
     ],
     "CRITICAL": [
-      0.8,
+      0.80,
       1.0
     ]
   },
   "feature_descriptions": {
-    "step": "Transaction timestamp hour step",
-    "type_encoded": "Encoded transaction channel/type",
+    "step": "Simulation/time step (hours elapsed)",
     "amount": "Transaction amount in INR",
-    "oldbalanceOrg": "Origin account balance before transaction",
-    "newbalanceOrig": "Origin account balance after transaction",
-    "oldbalanceDest": "Destination account balance before transaction",
-    "newbalanceDest": "Destination account balance after transaction",
-    "balance_diff_orig": "Net reduction from sender account",
-    "balance_diff_dest": "Net credit to receiver account",
-    "error_balance_orig": "Sender balance reconciliation discrepancy",
-    "error_balance_dest": "Receiver balance reconciliation discrepancy",
-    "amount_to_orig_ratio": "Transaction amount relative to sender balance",
-    "amount_to_dest_ratio": "Transaction amount relative to destination balance",
-    "orig_balance_zeroed": "Sender balance fully depleted to 0",
-    "dest_was_zero": "Destination account opened or previously zero-balance",
-    "is_large_amount": "Amount exceeds 90th percentile threshold",
-    "is_very_large": "Amount exceeds 99th percentile threshold",
-    "step_mod_24": "Hour of day (0-23)",
-    "is_night_txn": "Night-time transaction window (10PM - 5AM)",
-    "is_transfer": "TRANSFER payment rail",
-    "is_cashout": "CASH_OUT withdrawal rail",
-    "dest_unchanged": "Receiver balance unchanged (passthrough transit)",
-    "amount_dest_balance_ratio": "Transfer ratio to final recipient balance"
+    "isFlaggedFraud": "Rule-based high-value flag (>200,000 INR illegal transfer attempt)",
+    "hour": "Hour of the day (step mod 24)",
+    "is_night": "Night-time transaction window (10 PM to 5 AM)",
+    "orig_txn_count": "Historical transaction velocity of the sender account",
+    "dest_txn_count": "Historical transaction velocity of the recipient account",
+    "orig_counterparty_degree": "Number of unique counterparties connected to sender",
+    "dest_counterparty_degree": "Number of unique counterparties connected to recipient",
+    "type_CASH_IN": "CASH_IN deposit transaction rail",
+    "type_CASH_OUT": "CASH_OUT withdrawal transaction rail",
+    "type_DEBIT": "DEBIT transaction rail",
+    "type_PAYMENT": "PAYMENT merchant purchase transaction rail",
+    "type_TRANSFER": "TRANSFER peer-to-peer transaction rail"
   }
 }

@@ -1,21 +1,37 @@
-"""Canonical fraud-model features shared by training and inference."""
+"""Canonical fraud-model features shared by training and inference.
+
+14-feature specification trained strictly on PaySim (paysim_base_128k.csv):
+['step', 'amount', 'isFlaggedFraud', 'hour', 'is_night', 'orig_txn_count', 'dest_txn_count',
+ 'orig_counterparty_degree', 'dest_counterparty_degree', 'type_CASH_IN', 'type_CASH_OUT',
+ 'type_DEBIT', 'type_PAYMENT', 'type_TRANSFER']
+"""
 
 import math
+import sqlite3
 import numpy as np
 import pandas as pd
+from typing import Optional
 
 FEATURE_COLS = [
-    "step", "type_encoded", "amount", "oldbalanceOrg", "newbalanceOrig",
-    "oldbalanceDest", "newbalanceDest",
-    "balance_diff_orig", "balance_diff_dest", "error_balance_orig",
-    "error_balance_dest", "amount_to_orig_ratio", "amount_to_dest_ratio",
-    "orig_balance_zeroed", "dest_was_zero", "is_large_amount", "is_very_large",
-    "step_mod_24", "is_night_txn", "is_transfer", "is_cashout",
-    "dest_unchanged", "amount_dest_balance_ratio",
+    "step",
+    "amount",
+    "isFlaggedFraud",
+    "hour",
+    "is_night",
+    "orig_txn_count",
+    "dest_txn_count",
+    "orig_counterparty_degree",
+    "dest_counterparty_degree",
+    "type_CASH_IN",
+    "type_CASH_OUT",
+    "type_DEBIT",
+    "type_PAYMENT",
+    "type_TRANSFER",
 ]
 
-# Shared type encoding: must be identical in training and inference.
-# Unknown types map to -1 (not a valid class for the model, but consistent).
+SUPPORTED_TYPES = ["CASH_IN", "CASH_OUT", "DEBIT", "PAYMENT", "TRANSFER"]
+
+# Kept for backward compatibility with existing imports
 TYPE_MAP = {
     "CASH_OUT": 0,
     "PAYMENT": 1,
@@ -26,75 +42,134 @@ TYPE_MAP = {
 
 
 def training_thresholds(df: pd.DataFrame) -> dict[str, float]:
-    """Compute percentile-based thresholds from training data."""
+    """Compute percentile thresholds for metadata (backward compatibility)."""
     return {
         "large_amount": float(df["amount"].quantile(0.90)),
         "very_large_amount": float(df["amount"].quantile(0.99)),
     }
 
 
-def engineer_features(df: pd.DataFrame, thresholds: dict[str, float]) -> pd.DataFrame:
+def compute_account_graph_metrics(
+    sender_account: Optional[str] = None,
+    receiver_account: Optional[str] = None,
+    conn: Optional[sqlite3.Connection] = None,
+) -> dict[str, int]:
+    """
+    Computes (orig_txn_count, dest_txn_count, orig_counterparty_degree, dest_counterparty_degree).
+    Shared identically between scoreAgent and contextAgent to prevent divergent logic.
+    """
+    orig_txn_count = 1
+    orig_counterparty_degree = 1
+    dest_txn_count = 1
+    dest_counterparty_degree = 1
+
+    if conn is not None:
+        try:
+            if sender_account and sender_account != "UNKNOWN":
+                row = conn.execute(
+                    """SELECT COUNT(*), COUNT(DISTINCT receiver_account)
+                       FROM transactions
+                       WHERE sender_account = ? OR sender_id = ?""",
+                    (sender_account, sender_account),
+                ).fetchone()
+                if row and row[0] is not None and row[0] > 0:
+                    orig_txn_count = int(row[0]) + 1
+                    orig_counterparty_degree = max(1, int(row[1]))
+
+            if receiver_account and receiver_account != "UNKNOWN":
+                row = conn.execute(
+                    """SELECT COUNT(*), COUNT(DISTINCT sender_account)
+                       FROM transactions
+                       WHERE receiver_account = ? OR receiver_id = ?""",
+                    (receiver_account, receiver_account),
+                ).fetchone()
+                if row and row[0] is not None and row[0] > 0:
+                    dest_txn_count = int(row[0]) + 1
+                    dest_counterparty_degree = max(1, int(row[1]))
+        except Exception:
+            pass  # Fallback to safe defaults (1)
+
+    return {
+        "orig_txn_count": max(1, orig_txn_count),
+        "dest_txn_count": max(1, dest_txn_count),
+        "orig_counterparty_degree": max(1, orig_counterparty_degree),
+        "dest_counterparty_degree": max(1, dest_counterparty_degree),
+    }
+
+
+def engineer_features(
+    df: pd.DataFrame,
+    thresholds: Optional[dict[str, float]] = None,
+    conn: Optional[sqlite3.Connection] = None,
+) -> pd.DataFrame:
     """Engineer model features from raw transaction data.
 
-    Thresholds MUST come from model_metadata.json (persisted at training time)
-    to guarantee training/serving parity.
-
-    Raises ValueError for invalid inputs: negative balances, non-finite values,
-    or missing required columns.
+    Emits exactly the 14 features in exact order matching horizon_features.pkl:
+    ['step', 'amount', 'isFlaggedFraud', 'hour', 'is_night', 'orig_txn_count',
+     'dest_txn_count', 'orig_counterparty_degree', 'dest_counterparty_degree',
+     'type_CASH_IN', 'type_CASH_OUT', 'type_DEBIT', 'type_PAYMENT', 'type_TRANSFER']
     """
     fe = df.copy()
 
-    required = [
-        "step", "type", "amount",
-        "oldbalanceOrg", "newbalanceOrig",
-        "oldbalanceDest", "newbalanceDest",
-    ]
-    missing = [col for col in required if col not in fe]
-    if missing:
-        raise ValueError(f"Missing required feature fields: {', '.join(missing)}")
+    # Step: timestamp hour index
+    if "step" not in fe:
+        fe["step"] = 1
+    fe["step"] = fe["step"].astype(int)
 
-    # Validate numeric fields: must be finite and non-negative
-    numeric = [col for col in required if col != "type"]
-    for col in numeric:
-        values = fe[col].astype(float)
-        if not np.isfinite(values).all():
-            raise ValueError(f"Column '{col}' contains non-finite values (NaN/inf)")
-        if (values < 0).any():
-            raise ValueError(f"Column '{col}' contains negative values")
+    # Validate amount: must be present, finite, and non-negative
+    if "amount" not in fe:
+        raise ValueError("Missing required feature field: amount")
+    fe["amount"] = fe["amount"].astype(float)
+    if not np.isfinite(fe["amount"]).all():
+        raise ValueError("Column 'amount' contains non-finite values (NaN/inf)")
+    if (fe["amount"] < 0).any():
+        raise ValueError("Column 'amount' contains negative values")
 
-    # Type encoding: unknown types map to -1 (consistent between train and serve)
-    fe["type_encoded"] = fe["type"].map(TYPE_MAP).fillna(-1).astype(int)
+    # Validate balance fields if present (reject negative or non-finite)
+    for b_col in ["oldbalanceOrg", "newbalanceOrig", "oldbalanceDest", "newbalanceDest"]:
+        if b_col in fe:
+            vals = fe[b_col].astype(float)
+            if not np.isfinite(vals).all():
+                raise ValueError(f"Column '{b_col}' contains non-finite values (NaN/inf)")
+            if (vals < 0).any():
+                raise ValueError(f"Column '{b_col}' contains negative values")
 
-    # Balance differences
-    fe["balance_diff_orig"] = fe["oldbalanceOrg"] - fe["newbalanceOrig"]
-    fe["balance_diff_dest"] = fe["newbalanceDest"] - fe["oldbalanceDest"]
+    # isFlaggedFraud: binary flag (default 0)
+    if "isFlaggedFraud" not in fe:
+        fe["isFlaggedFraud"] = 0
+    fe["isFlaggedFraud"] = fe["isFlaggedFraud"].fillna(0).astype(int)
 
-    # Balance reconciliation errors
-    fe["error_balance_orig"] = (fe["oldbalanceOrg"] - fe["newbalanceOrig"] - fe["amount"]).abs()
-    fe["error_balance_dest"] = (fe["oldbalanceDest"] + fe["amount"] - fe["newbalanceDest"]).abs()
+    # Time features: hour of day (0-23) and night-time flag (10 PM to 5 AM)
+    fe["hour"] = fe["step"] % 24
+    fe["is_night"] = ((fe["hour"] >= 22) | (fe["hour"] <= 5)).astype(int)
 
-    # Ratios (safe division: denominator + 1.0 avoids division by zero)
-    fe["amount_to_orig_ratio"] = fe["amount"] / (fe["oldbalanceOrg"] + 1.0)
-    fe["amount_to_dest_ratio"] = fe["amount"] / (fe["oldbalanceDest"] + 1.0)
+    # Shared graph & velocity features
+    graph_cols = ["orig_txn_count", "dest_txn_count", "orig_counterparty_degree", "dest_counterparty_degree"]
+    missing_graph_cols = [c for c in graph_cols if c not in fe]
 
-    # Binary flags
-    fe["orig_balance_zeroed"] = (fe["newbalanceOrig"] == 0).astype(int)
-    fe["dest_was_zero"] = (fe["oldbalanceDest"] == 0).astype(int)
+    if missing_graph_cols:
+        # If running on a multi-row dataset (e.g., PaySim batch) with nameOrig/nameDest:
+        if len(fe) > 1 and "nameOrig" in fe and "nameDest" in fe:
+            fe["orig_txn_count"] = fe.groupby("nameOrig")["step"].transform("count")
+            fe["dest_txn_count"] = fe.groupby("nameDest")["step"].transform("count")
+            fe["orig_counterparty_degree"] = fe.groupby("nameOrig")["nameDest"].transform("nunique")
+            fe["dest_counterparty_degree"] = fe.groupby("nameDest")["nameOrig"].transform("nunique")
+        else:
+            # Single transaction scoring: look up from DB or use account parameters
+            sender = fe["nameOrig"].iloc[0] if "nameOrig" in fe else (fe["sender_account"].iloc[0] if "sender_account" in fe else None)
+            receiver = fe["nameDest"].iloc[0] if "nameDest" in fe else (fe["receiver_account"].iloc[0] if "receiver_account" in fe else None)
 
-    # Threshold flags — thresholds come from persisted model_metadata.json
-    fe["is_large_amount"] = (fe["amount"] > thresholds["large_amount"]).astype(int)
-    fe["is_very_large"] = (fe["amount"] > thresholds["very_large_amount"]).astype(int)
+            metrics = compute_account_graph_metrics(sender, receiver, conn=conn)
+            for c in graph_cols:
+                if c not in fe:
+                    fe[c] = metrics[c]
 
-    # Time features
-    fe["step_mod_24"] = fe["step"] % 24
-    fe["is_night_txn"] = ((fe["step_mod_24"] >= 22) | (fe["step_mod_24"] <= 5)).astype(int)
+    for c in graph_cols:
+        fe[c] = fe[c].fillna(1).astype(int)
 
-    # Type flags
-    fe["is_transfer"] = (fe["type"] == "TRANSFER").astype(int)
-    fe["is_cashout"] = (fe["type"] == "CASH_OUT").astype(int)
-
-    # Balance behavior
-    fe["dest_unchanged"] = (fe["balance_diff_dest"] == 0).astype(int)
-    fe["amount_dest_balance_ratio"] = fe["amount"] / (fe["newbalanceDest"] + 1.0)
+    # One-hot encoded transaction rails
+    type_series = fe["type"] if "type" in fe else pd.Series(["TRANSFER"] * len(fe))
+    for t in SUPPORTED_TYPES:
+        fe[f"type_{t}"] = (type_series == t).astype(int)
 
     return fe[FEATURE_COLS]

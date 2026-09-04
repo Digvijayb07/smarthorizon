@@ -12,7 +12,7 @@ with open('fraud_model.pkl', 'rb') as f:
     model = pickle.load(f)
 with open('model_metadata.json', 'r') as f:
     metadata = json.load(f)
-thresholds = metadata['feature_thresholds']
+thresholds = metadata.get('feature_thresholds', {})
 from features import engineer_features, FEATURE_COLS, TYPE_MAP
 from routers.graph import _detect_patterns
 
@@ -51,7 +51,7 @@ print(">>> STAGE 1: FRAUD SIGNAL ENGINE (features.py)")
 print("=" * 70)
 print()
 print("WHAT IT IS: Pure Python feature engineering. No ML model.")
-print("PURPOSE:   Transform 7 raw UPI fields into 23 model-ready features.")
+print("PURPOSE:   Transform UPI fields into 14 model-ready features.")
 print()
 print("INPUT (raw transaction from UPI/rail system):")
 print("  transaction_id = TXN-FRAUD-001")
@@ -67,22 +67,20 @@ print()
 df_raw = pd.DataFrame([txn_raw])
 df_features = engineer_features(df_raw, thresholds)
 
-print("OUTPUT (23 engineered features computed):")
+print("OUTPUT (14 engineered features computed):")
 print("-" * 50)
 for col in FEATURE_COLS:
     val = df_features[col].iloc[0]
     # Add human-readable interpretation
     note = ""
-    if col == "type_encoded":
-        note = "    (TRANSFER = 3)"
-    elif col == "amount_to_orig_ratio":
-        note = f"    ({val:.4f} = 97.2pct of sender balance)"
-    elif col == "amount_to_dest_ratio":
-        note = f"    ({val:.1f}x receiver balance = HUGE relative transfer)"
-    elif col == "is_large_amount":
-        note = "    (above p90 = 1,065,449)" if val else "    (below p90)"
-    elif col == "orig_balance_zeroed":
-        note = "    (sender NOT zeroed - 12,500 remains)"
+    if col == "type_TRANSFER":
+        note = "    (TRANSFER rail active)"
+    elif col == "is_night":
+        note = "    (Night-time transaction flag)"
+    elif col == "orig_counterparty_degree":
+        note = "    (Unique receiver accounts connected to sender)"
+    elif col == "dest_counterparty_degree":
+        note = "    (Unique sender accounts connected to receiver)"
     print(f"  {col:30s} = {val}{note}")
 print()
 
@@ -103,8 +101,8 @@ X = df_features[FEATURE_COLS]
 model_probability = float(model.predict_proba(X)[0, 1])
 
 print("Step 2a - XGBoost Model Prediction:")
-print("  INPUT:  23-feature vector from Stage 1")
-print("  MODEL:  fraud_model.pkl (ROC-AUC=0.9994, F1=0.9765)")
+print("  INPUT:  14-feature vector from Stage 1")
+print("  MODEL:  fraud_model.pkl (ROC-AUC=0.9694, F1=0.7782 across 128,001 PaySim records)")
 print(f"  OUTPUT: P(fraud) = {model_probability:.6f}")
 print(f"          Meaning: {model_probability*100:.2f}% confidence this is fraud")
 print()
@@ -130,15 +128,15 @@ else:
 print()
 
 # Band
-if proba < 0.30: band = 'LOW'
-elif proba < 0.60: band = 'MEDIUM'
+if proba < 0.20: band = 'LOW'
+elif proba < 0.50: band = 'MEDIUM'
 elif proba < 0.80: band = 'HIGH'
 else: band = 'CRITICAL'
 action_map = {'LOW': 'ALLOW', 'MEDIUM': 'MONITOR', 'HIGH': 'FLAG', 'CRITICAL': 'BLOCK'}
 
 print("Step 2c - Risk Band + Action:")
 print(f"  INPUT:  probability = {proba:.4f}")
-print(f"  RULE:   <0.30=LOW, 0.30-0.60=MEDIUM, 0.60-0.80=HIGH, >=0.80=CRITICAL")
+print(f"  RULE:   <0.20=LOW, 0.20-0.50=MEDIUM, 0.50-0.80=HIGH, >=0.80=CRITICAL")
 print(f"  OUTPUT: band = {band}  -->  action = {action_map[band]}")
 print()
 
@@ -150,7 +148,7 @@ shap_dict = {f: round(float(v), 4) for f, v in zip(FEATURE_COLS, shap_vals)}
 top5 = sorted(shap_dict.items(), key=lambda x: abs(x[1]), reverse=True)[:5]
 
 print("Step 2d - SHAP Explainability (top 5 feature drivers):")
-print("  INPUT:  23-feature vector + trained model")
+print("  INPUT:  14-feature vector + trained model")
 print("  TOOL:   SHAP TreeExplainer (game-theoretic feature attribution)")
 print("  OUTPUT: Per-feature contribution to this specific prediction")
 for feat, val in top5:
@@ -210,11 +208,12 @@ print(f"  Edges (transfers): {G.number_of_edges()}")
 print()
 
 print("Pattern Detection Results:")
-patterns = _detect_patterns(G, 'ACC-MULE-5050', 'ACC-NEW-3321')
+patterns, network_risk, network_summary = _detect_patterns(G, 'ACC-MULE-5050', 'ACC-NEW-3321')
+print(f"Network Risk Level: {network_risk} ({network_summary})")
 for p in patterns:
     print(f"  [{p['type']}]")
     print(f"    {p.get('description', '')}")
     if 'degree' in p:
         print(f"    Degree: {p['degree']}")
     if 'nodes' in p:
-        print(f"    Cycle: {' -> '.join(p['nodes'])
+        print(f"    Cycle: {' -> '.join(p['nodes'])}")

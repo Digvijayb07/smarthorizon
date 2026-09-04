@@ -214,12 +214,12 @@ def test_dismiss_on_high_risk_fails():
 # ─── Test 5: Block action on low-risk score ──────────────────────────────────
 
 def test_block_on_low_risk_fails():
-    """BLOCK action on a LOW risk score (<30) triggers decision_consistent."""
+    """BLOCK action on a LOW risk score (<20) triggers decision_consistent."""
     db = _make_db()
     result = validate_investigation(
         reason_output=_VALID_REPORT,
         decision_output={"action": "BLOCK", "confidence": 0.95},
-        risk_score=20.0,   # LOW band: clearly below 30
+        risk_score=15.0,   # LOW band: clearly below 20
         regulations_db=db,
     )
     assert result["validated"] is False

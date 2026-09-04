@@ -42,13 +42,35 @@ from typing import Any
 # Raise to make the relevance check stricter; lower to relax it.
 CITATION_RELEVANCE_THRESHOLD: float = 0.15
 
+# Default thresholds calibrated against PaySim validation distribution:
+# LOW: 0-20, MEDIUM: 20-50, HIGH: 50-80, CRITICAL: 80-100
+DEFAULT_HIGH_RISK_SCORE_THRESHOLD: float = 50.0
+DEFAULT_LOW_MEDIUM_SCORE_BOUNDARY: float = 20.0
+
+def _load_thresholds_from_metadata() -> tuple[float, float]:
+    """Dynamically load HIGH and LOW risk band boundaries from model_metadata.json."""
+    import json
+    import os
+    try:
+        meta_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "model_metadata.json")
+        if os.path.exists(meta_path):
+            with open(meta_path, "r") as f:
+                meta = json.load(f)
+            bands = meta.get("risk_bands", {})
+            high_min = float(bands.get("HIGH", [0.5, 0.8])[0]) * 100.0
+            low_max = float(bands.get("LOW", [0.0, 0.2])[1]) * 100.0
+            return high_min, low_max
+    except Exception:
+        pass
+    return DEFAULT_HIGH_RISK_SCORE_THRESHOLD, DEFAULT_LOW_MEDIUM_SCORE_BOUNDARY
+
+_dyn_high, _dyn_low = _load_thresholds_from_metadata()
+
 # risk_score at or above this value is treated as "high risk".
-# Matches thresholds.json: HIGH band min_score = 61.
-HIGH_RISK_SCORE_THRESHOLD: float = 61.0
+HIGH_RISK_SCORE_THRESHOLD: float = _dyn_high
 
 # risk_score strictly below this value is treated as "definitively low risk".
-# Matches thresholds.json: LOW band max_score = 30.
-LOW_MEDIUM_SCORE_BOUNDARY: float = 30.0
+LOW_MEDIUM_SCORE_BOUNDARY: float = _dyn_low
 
 # Characters on each side of a matched citation to use as claim context for
 # the keyword-overlap check.
