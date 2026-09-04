@@ -85,6 +85,9 @@ export interface BackendCase {
   analyst_notes: string | null;
   investigation_report: string | null;
   str_draft: string | null;
+  validated?: boolean | number | null;
+  failed_checks?: string | string[] | null;
+  forced_review_level?: string | null;
   transaction?: BackendTransaction | null;
   sender?: BackendCustomer | null;
   receiver?: BackendCustomer | null;
@@ -163,6 +166,15 @@ export interface InvestigationResponse {
   ai_generated: boolean;
   reasoning_source: string;
   rule_adjustments: string[];
+  validated?: boolean;
+  failed_checks?: string[];
+  forced_review_level?: string | null;
+  validator?: {
+    validated: boolean;
+    failed_checks: string[];
+    forced_review_level: string | null;
+    details?: any;
+  };
   graph_context: {
     nodes: Array<{ id: string; type?: string }>;
     links: Array<{
@@ -339,8 +351,19 @@ export function getCaseGraph(caseId: string): Promise<CaseGraphResponse> {
   return apiFetch(`/api/graph/${encodeURIComponent(caseId)}`);
 }
 
+export interface HealthResponse {
+  status: string;
+  model: string;
+  version: string;
+  ledger?: {
+    status: string;
+    url: string;
+    latency_ms: number | null;
+  };
+}
+
 /** Health check */
-export function healthCheck(): Promise<{ status: string; model: string }> {
+export function healthCheck(): Promise<HealthResponse> {
   return apiFetch("/health");
 }
 

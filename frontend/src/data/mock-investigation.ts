@@ -45,40 +45,39 @@ export const evidenceChips = [
 
 export const agents: Agent[] = [
   {
-    id: "orchestrator",
-    name: "Orchestrator",
-    role: "Decomposes and coordinates investigation tasks.",
-    tier: "orchestrator",
-  },
-  { id: "data", name: "Data Agent", role: "Collects and normalizes evidence.", tier: "collection" },
-  {
-    id: "risk",
-    name: "Risk Agent",
-    role: "Calculates risk and detects suspicious patterns.",
+    id: "score",
+    name: "Score Agent",
+    role: "XGBoost ML risk scoring engine with SHAP feature attribution.",
     tier: "collection",
   },
   {
-    id: "compliance",
-    name: "Compliance Agent",
-    role: "Retrieves and grounds regulatory context.",
+    id: "context",
+    name: "Context Agent",
+    role: "Multi-hop relational graph topology and money mule detection.",
     tier: "collection",
   },
   {
     id: "reason",
     name: "Reason Agent",
-    role: "Converts evidence into investigator reasoning.",
+    role: "Gemini LLM regulatory reasoning with PMLA & RBI circular grounding.",
     tier: "reasoning",
   },
   {
-    id: "report",
-    name: "Report Agent",
-    role: "Creates investigation-ready documentation.",
+    id: "decision",
+    name: "Decision Agent",
+    role: "Action recommendation (Block, Monitor, Dismiss, Escalate).",
+    tier: "reasoning",
+  },
+  {
+    id: "validator",
+    name: "Validator Agent",
+    role: "Audits regulatory citations and cross-checks decision consistency.",
     tier: "reasoning",
   },
   {
     id: "human",
     name: "Human Analyst",
-    role: "Reviews findings and owns the final decision.",
+    role: "Reviews findings and owns the final decision (Maker-Checker).",
     tier: "human",
   },
 ];

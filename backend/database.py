@@ -149,9 +149,69 @@ def init_db():
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """, u)
 
+    # ── Regulations Grounding Table (validatorAgent reference) ─────────────────
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS regulations (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            act          TEXT NOT NULL,
+            section      TEXT NOT NULL,
+            page_ref     TEXT,
+            summary_text TEXT NOT NULL,
+            UNIQUE(act, section)
+        )
+    """)
+
+    # Ensure validator columns exist on cases (safe migrations)
+    for col, col_type in [
+        ("validated", "INTEGER"),
+        ("failed_checks", "TEXT"),
+        ("forced_review_level", "TEXT"),
+    ]:
+        try:
+            c.execute(f"ALTER TABLE cases ADD COLUMN {col} {col_type}")
+        except Exception:
+            pass  # Column already exists
+
+    seed_regulations(conn)
+
     conn.commit()
     conn.close()
     print(f"[OK] Database initialized: {DB_PATH}")
+
+
+def seed_regulations(conn: sqlite3.Connection) -> None:
+    """Seed base regulatory ground-truth for validatorAgent."""
+    rows = [
+        (
+            "PMLA",
+            "12",
+            "p.14",
+            "Reporting entity to maintain records of all transactions, verify client identities, and furnish information to FIU-IND within specified timeframes. Section 12 of the Prevention of Money Laundering Act, 2002 mandates that every reporting entity shall maintain a record of all transactions, furnish information relating to such transactions to the Director within the prescribed time, and verify the identity of its clients.",
+        ),
+        (
+            "RBI_MASTER_DIRECTION_FRM_2024",
+            "GENERAL",
+            "p.3",
+            "Framework for early fraud detection, account monitoring, staff accountability, and prompt reporting of suspicious transactions and fraud to RBI. Master Direction on Fraud Risk Management in Regulated Entities covers governance, early detection mechanisms, transaction monitoring, reporting thresholds, and coordination with law enforcement agencies.",
+        ),
+        (
+            "NPCI_OC",
+            "138",
+            "p.2",
+            "Operational circular mandating detection and containment of mule accounts, velocity monitoring, and real-time transaction blocking across UPI rails. Directs banks and payment system participants to establish automated alerts for rapid fund movement, implement customer refund timelines, and report mule accounts to cybercrime and regulatory authorities.",
+        ),
+    ]
+    conn.executemany(
+        """
+        INSERT INTO regulations (act, section, page_ref, summary_text)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(act, section) DO UPDATE SET
+            summary_text = excluded.summary_text,
+            page_ref = excluded.page_ref
+        """,
+        rows,
+    )
+    conn.commit()
 
 
 def get_db():
