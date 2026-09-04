@@ -129,6 +129,8 @@ graph_agent_review/
 backend/drivematerial/drive_material/Data/paysim dataset.csv
 backend/drivematerial/drive_material/Data/paysim_account_customer_mapping.csv
 drive-download*/
+ML/*.csv
+ML/*.pkl
 
 # Generic large binary/data formats
 *.csv.gz

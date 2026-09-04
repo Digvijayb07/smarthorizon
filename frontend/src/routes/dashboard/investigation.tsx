@@ -72,6 +72,7 @@ function InvestigationPage() {
   const [investigationResult, setInvestigationResult] = useState<string | null>(null);
   const [strDraftResult, setStrDraftResult] = useState<string | null>(null);
   const [decisionFeedback, setDecisionFeedback] = useState<string | null>(null);
+  const [validatorResult, setValidatorResult] = useState<any>(null);
 
   // Fetch list of cases to find the top case
   const { data: casesData, isLoading: isListLoading } = useQuery({
@@ -98,6 +99,13 @@ function InvestigationPage() {
     onSuccess: (data) => {
       setInvestigationResult(data.investigation_report);
       setStrDraftResult(data.str_draft);
+      setValidatorResult(
+        data.validator || {
+          validated: data.validated,
+          failed_checks: data.failed_checks,
+          forced_review_level: data.forced_review_level,
+        }
+      );
       queryClient.invalidateQueries({ queryKey: ["case", activeCaseId] });
       queryClient.invalidateQueries({ queryKey: ["cases"] });
       queryClient.invalidateQueries({ queryKey: ["auditLog"] });
@@ -170,6 +178,7 @@ function InvestigationPage() {
         agents={agents}
         regulatorySources={regulatorySources}
         report={report}
+        validatorData={validatorResult}
         onRunInvestigation={() => investigateMutation.mutate()}
         isInvestigating={investigateMutation.isPending}
         onDecision={(decisionCode, notes) =>

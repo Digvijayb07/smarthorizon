@@ -71,16 +71,16 @@ def generate_counterfactual(
     # ── 1. Target Threshold by Risk Band ──────────────────────────────────────
     if risk_band == "CRITICAL":
         target_band = "HIGH"
-        # First try dropping below CRITICAL (< 0.80); if possible, drop to MEDIUM (< 0.60)
-        target_proba = 0.795
+        # First try dropping below CRITICAL (< 0.80); if possible, drop to MEDIUM (< 0.50)
+        target_proba = 0.79
         primary_band = "CRITICAL"
     elif risk_band == "HIGH":
         target_band = "MEDIUM"
-        target_proba = 0.595
+        target_proba = 0.49
         primary_band = "HIGH"
     elif risk_band == "MEDIUM":
         target_band = "LOW"
-        target_proba = 0.295
+        target_proba = 0.19
         primary_band = "MEDIUM"
     else:  # LOW risk
         large_thresh = thresholds.get("large_amount", 1065450.0)
@@ -123,7 +123,7 @@ def generate_counterfactual(
                     if p <= target_proba:
                         found_bracket = (cand_amt, p)
                         # Can we even drop to MEDIUM?
-                        if primary_band == "CRITICAL" and p <= 0.595:
+                        if primary_band == "CRITICAL" and p <= 0.49:
                             target_band = "MEDIUM"
                         break
                 except Exception:

@@ -71,12 +71,10 @@ class ScoreResponse(BaseModel):
 # ── Internal helpers ────────────────────────────────────────────────────────
 
 def _engineer(txn: dict) -> pd.DataFrame:
-    """Engineer features using persisted thresholds from model_metadata.json."""
+    """Engineer the canonical 14 features for the fraud model."""
     metadata = app_state.metadata or {}
     thresholds = metadata.get("feature_thresholds")
-    if not thresholds:
-        raise HTTPException(503, "Model metadata not loaded; missing feature_thresholds.")
-    return engineer_features(pd.DataFrame([txn]), thresholds)
+    return engineer_features(pd.DataFrame([txn]), thresholds=thresholds)
 
 
 def _validate_transaction_input(txn: dict) -> dict:
@@ -85,16 +83,12 @@ def _validate_transaction_input(txn: dict) -> dict:
     if not math.isfinite(amount) or amount < 0:
         raise HTTPException(422, "Transaction amount must be a finite, non-negative number.")
 
-    # Validate numeric balances
+    # Validate numeric balances if provided
     for field in ["oldbalanceOrg", "newbalanceOrig", "oldbalanceDest", "newbalanceDest"]:
-        val = txn.get(field, 0)
-        if not math.isfinite(val) or val < 0:
-            raise HTTPException(422, f"Field '{field}' must be a finite, non-negative number.")
-
-    # Validate transaction type
-    type_val = txn.get("type", "TRANSFER")
-    if type_val not in TYPE_MAP and type_val != "UNKNOWN_RAIL":
-        pass  # Will be mapped to -1 by engineer_features
+        if field in txn and txn[field] is not None:
+            val = txn.get(field, 0)
+            if not math.isfinite(val) or val < 0:
+                raise HTTPException(422, f"Field '{field}' must be a finite, non-negative number.")
 
     return txn
 
@@ -109,10 +103,10 @@ def _apply_severity_override(proba: float, severity: str | None) -> tuple[float,
 
 
 def _band_from_proba(proba: float) -> str:
-    """Map probability to risk band."""
-    if proba < 0.30:
+    """Map probability to risk band based on empirical PaySim validation distribution."""
+    if proba < 0.20:
         return "LOW"
-    elif proba < 0.60:
+    elif proba < 0.50:
         return "MEDIUM"
     elif proba < 0.80:
         return "HIGH"
@@ -208,6 +202,6 @@ async def analyze_transaction(txn: TransactionInput, _: CurrentUser = Depends(cu
     result = score_transaction(txn.model_dump())
     return ScoreResponse(
         transaction_id=txn.transaction_id,
-        model_version="xgboost-enhanced-v2.1",
+        model_version="paysim-14feat-v1.0",
         **result,
     )

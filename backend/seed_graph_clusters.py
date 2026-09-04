@@ -20,6 +20,34 @@ def seed():
     now = datetime.now()
 
     # --------------------------------------------------------------------------
+    # 0. Seed Cluster Customers
+    # --------------------------------------------------------------------------
+    customers = [
+        ("CUST-FEEDER-1", "Aarav Sharma", "SBI-91028312", "SBI", "FULL_KYC", "LOW", "Mumbai", "+919820112233", 0, 0, (now - timedelta(days=60)).isoformat()),
+        ("CUST-FEEDER-2", "Rohan Kumar", "HDFC-11209485", "HDFC", "FULL_KYC", "LOW", "Delhi", "+919820112234", 0, 0, (now - timedelta(days=55)).isoformat()),
+        ("CUST-36480482", "Vikram Malhotra", "Canara-36480482", "Canara", "SIMPLIFIED", "CRITICAL", "Mumbai", "+919820112235", 1, 0, (now - timedelta(days=30)).isoformat()),
+        ("CUST-74333786", "Suresh Nair", "Kotak-74333786", "Kotak", "E_KYC", "CRITICAL", "Surat", "+919820112236", 1, 0, (now - timedelta(days=20)).isoformat()),
+        ("CUST-MULE-1", "Kiran Joshi", "Axis-55019283", "Axis", "SIMPLIFIED", "HIGH", "Surat", "+919820112237", 1, 0, (now - timedelta(days=10)).isoformat()),
+        ("CUST-MULE-2", "Pooja Patel", "ICICI-88192039", "ICICI", "SIMPLIFIED", "HIGH", "Ahmedabad", "+919820112238", 1, 0, (now - timedelta(days=10)).isoformat()),
+        ("CUST-MULE-3", "Dev Yadav", "Paytm-99018274", "Paytm", "SIMPLIFIED", "CRITICAL", "Jaipur", "+919820112239", 1, 0, (now - timedelta(days=5)).isoformat()),
+        ("CUST-STR-S", "Anjali Verma", "HDFC-44344942", "HDFC", "FULL_KYC", "CRITICAL", "Bengaluru", "+919820112240", 0, 0, (now - timedelta(days=90)).isoformat()),
+        ("CUST-STR-R0", "Raj Bansal", "Axis-20152485", "Axis", "E_KYC", "MEDIUM", "Bengaluru", "+919820112241", 0, 0, (now - timedelta(days=40)).isoformat()),
+        ("CUST-STR-R2", "Sneha Rao", "ICICI-63650963", "ICICI", "E_KYC", "MEDIUM", "Bengaluru", "+919820112242", 0, 0, (now - timedelta(days=40)).isoformat()),
+        ("CUST-STR-R4", "Amit Kulkarni", "BOB-85021338", "BOB", "E_KYC", "MEDIUM", "Bengaluru", "+919820112243", 0, 0, (now - timedelta(days=40)).isoformat()),
+        ("CUST-STR-R7", "Meera Desai", "Canara-85484212", "Canara", "E_KYC", "MEDIUM", "Bengaluru", "+919820112244", 0, 0, (now - timedelta(days=40)).isoformat()),
+        ("CUST-Axis-36480482", "Yash Agarwal", "Axis-36480482", "Axis", "FULL_KYC", "CRITICAL", "Mumbai", "+919820112245", 0, 0, (now - timedelta(days=120)).isoformat()),
+        ("CUST-PNB-91699287", "Sumit Gupta", "PNB-91699287", "PNB", "FULL_KYC", "CRITICAL", "Mumbai", "+919820112246", 0, 0, (now - timedelta(days=110)).isoformat()),
+        ("CUST-Canara-84073862", "Priya Reddy", "Canara-84073862", "Canara", "FULL_KYC", "CRITICAL", "Mumbai", "+919820112247", 0, 0, (now - timedelta(days=100)).isoformat()),
+    ]
+    for cust in customers:
+        c.execute("""
+            INSERT OR REPLACE INTO customers (
+                customer_id, name, account_id, bank, kyc_status,
+                risk_category, city, phone, is_mule_suspected, is_pep, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        """, cust)
+
+    # --------------------------------------------------------------------------
     # 1. Cluster for FC-20260815-8E916E (Canara-36480482 -> Kotak-74333786)
     # --------------------------------------------------------------------------
     base_time = now - timedelta(hours=3)
@@ -95,6 +123,28 @@ def seed():
                 scenario_type, fraud_reason, severity
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, t)
+
+    # Add case for feeder and mule dispersion cluster (FC-20260815-8E916E)
+    c.execute("""
+        INSERT OR REPLACE INTO cases (
+            case_id, transaction_id, status, risk_score, risk_band, recommended_action,
+            analyst_id, opened_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        "FC-20260815-8E916E", "TXN-FEEDER-01", "OPEN", 94.2, "CRITICAL", "BLOCK",
+        "Alex Chen", base_time.isoformat(), base_time.isoformat()
+    ))
+
+    # Add case for high-velocity mule cashout (FC-20260815-83D0B1)
+    c.execute("""
+        INSERT OR REPLACE INTO cases (
+            case_id, transaction_id, status, risk_score, risk_band, recommended_action,
+            analyst_id, opened_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        "FC-20260815-83D0B1", "TXN-MULE-03", "OPEN", 99.8, "CRITICAL", "BLOCK",
+        "INV-CURRENT", base_time.isoformat(), base_time.isoformat()
+    ))
 
     # --------------------------------------------------------------------------
     # 2. Structuring / Smurfing Case: FC-20260904-STR01

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Check,
   CircleDot,
@@ -6,6 +6,7 @@ import {
   FileText,
   Gavel,
   ShieldCheck,
+  ShieldAlert,
   X,
   CheckCircle2,
   Sparkles,
@@ -46,6 +47,12 @@ export interface InvestigationWorkspaceProps {
   regulatorySources: RegulatorySource[];
   report: InvestigationReport;
   backendCase?: BackendCase | null | undefined;
+  validatorData?: {
+    validated?: boolean | undefined;
+    failed_checks?: string[] | undefined;
+    forced_review_level?: string | null | undefined;
+    details?: any;
+  } | null | undefined;
   onRunInvestigation?: (() => void) | undefined;
   isInvestigating?: boolean | undefined;
   onDecision?: ((decision: string, notes?: string | undefined) => void) | undefined;
@@ -58,7 +65,7 @@ export interface InvestigationWorkspaceProps {
   citedClauses?: string[] | null | undefined;
 }
 
-const agentIds = ["orchestrator", "data", "risk", "reason"];
+const agentIds = ["score", "context", "reason", "decision", "validator"];
 
 export function InvestigationWorkspace({
   caseData,
@@ -72,6 +79,7 @@ export function InvestigationWorkspace({
   regulatorySources,
   report,
   backendCase,
+  validatorData,
   onRunInvestigation,
   isInvestigating = false,
   onDecision,
@@ -94,6 +102,35 @@ export function InvestigationWorkspace({
     report.sections.find((section) => section.title.includes("Findings") || section.title.includes("Report"))?.summary ||
     backendCase?.investigation_report;
 
+  const failedChecks: string[] = useMemo(() => {
+    if (validatorData?.failed_checks && Array.isArray(validatorData.failed_checks)) {
+      return validatorData.failed_checks;
+    }
+    if (backendCase?.failed_checks) {
+      if (Array.isArray(backendCase.failed_checks)) return backendCase.failed_checks;
+      try {
+        const parsed = JSON.parse(backendCase.failed_checks);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        return [String(backendCase.failed_checks)];
+      }
+    }
+    return [];
+  }, [validatorData, backendCase]);
+
+  const isValidated = useMemo(() => {
+    if (validatorData?.validated !== undefined) {
+      return Boolean(validatorData.validated);
+    }
+    if (backendCase?.validated !== undefined && backendCase?.validated !== null) {
+      return backendCase.validated === 1 || backendCase.validated === true;
+    }
+    return null;
+  }, [validatorData, backendCase]);
+
+  const forcedReviewLevel = validatorData?.forced_review_level || backendCase?.forced_review_level;
+  const hasValidationRun = Boolean(recommendationReasoning && (isValidated !== null || failedChecks.length > 0 || forcedReviewLevel));
+
   const handleDecisionClick = (action: string, backendCode: string) => {
     setLocalDecision(action);
     if (onDecision) {
@@ -110,26 +147,36 @@ export function InvestigationWorkspace({
     }
   };
 
-  // Dynamic agent progress based on investigation state
+  // Dynamic agent progress based on 5-agent pipeline state
   const progressByAgent: Record<string, InvestigationAgentProgress> = isInvestigating
     ? {
-        orchestrator: { status: "Running", activity: "Coordinating multi-agent analysis via Gemini...", progress: 85, findingCount: 2 },
-        data: { status: "Running", activity: "Fetching KYC, device, transaction history from database...", progress: 90, findingCount: 4 },
-        risk: { status: "Running", activity: "Evaluating XGBoost model + SHAP attribution signals...", progress: 75, findingCount: 3 },
-        reason: { status: "Running", activity: "Synthesizing regulatory findings (PMLA / FIU-IND)...", progress: 50, findingCount: 1 },
+        score: { status: "Running", activity: "Evaluating XGBoost model + SHAP attribution signals...", progress: 95, findingCount: 3 },
+        context: { status: "Running", activity: "Analyzing multi-hop graph topology & mule accounts...", progress: 80, findingCount: 4 },
+        reason: { status: "Running", activity: "Synthesizing regulatory findings with Gemini...", progress: 60, findingCount: 2 },
+        decision: { status: "Waiting", activity: "Awaiting reasoning synthesis...", progress: 0, findingCount: 0 },
+        validator: { status: "Waiting", activity: "Awaiting decision output for citation verification...", progress: 0, findingCount: 0 },
       }
     : recommendationReasoning
       ? {
-          orchestrator: { status: "Completed", activity: "Investigation decomposed and executed", progress: 100, findingCount: 4 },
-          data: { status: "Completed", activity: "Evidence register compiled & validated", progress: 100, findingCount: 7 },
-          risk: { status: "Completed", activity: "XGBoost score & topological graph evaluated", progress: 100, findingCount: 3 },
-          reason: { status: "Completed", activity: "Gemini 3.7 reasoning report generated", progress: 100, findingCount: 5 },
+          score: { status: "Completed", activity: "XGBoost score & SHAP explainability drivers computed", progress: 100, findingCount: 3 },
+          context: { status: "Completed", activity: "Multi-hop relational topology evaluated", progress: 100, findingCount: 4 },
+          reason: { status: "Completed", activity: "Gemini regulatory reasoning report generated", progress: 100, findingCount: 2 },
+          decision: { status: "Completed", activity: `Action recommended: ${backendCase?.recommended_action || caseData.recommendation}`, progress: 100, findingCount: 1 },
+          validator: {
+            status: isValidated === true ? "Completed" : isValidated === false ? "Needs Review" : "Completed",
+            activity: isValidated === false
+              ? `Validation flags: ${failedChecks.join(", ") || "Audit warnings raised"}`
+              : "All regulatory citations & decision rules grounded & verified",
+            progress: 100,
+            findingCount: failedChecks.length,
+          },
         }
       : {
-          orchestrator: { status: "Waiting", activity: "Ready for AI investigation dispatch", progress: 0, findingCount: 0 },
-          data: { status: "Waiting", activity: "Awaiting trigger", progress: 0, findingCount: 0 },
-          risk: { status: "Waiting", activity: "Awaiting trigger", progress: 0, findingCount: 0 },
+          score: { status: "Waiting", activity: "Awaiting trigger", progress: 0, findingCount: 0 },
+          context: { status: "Waiting", activity: "Awaiting trigger", progress: 0, findingCount: 0 },
           reason: { status: "Waiting", activity: "Awaiting trigger", progress: 0, findingCount: 0 },
+          decision: { status: "Waiting", activity: "Awaiting trigger", progress: 0, findingCount: 0 },
+          validator: { status: "Waiting", activity: "Awaiting trigger", progress: 0, findingCount: 0 },
         };
 
   return (
@@ -305,6 +352,158 @@ export function InvestigationWorkspace({
                     clauses={regulatoryClauses || backendCase?.regulatory_clauses}
                   />
                 </div>
+              </div>
+            )}
+
+            {/* Agent 5: Validator Agent Audit & Regulatory Fact-Check Panel */}
+            {hasValidationRun && (
+              <div
+                className={cn(
+                  "rounded-xl border p-4 transition-all",
+                  isValidated
+                    ? "border-teal/30 bg-teal/5"
+                    : "border-amber-500/30 bg-amber-500/5"
+                )}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3 border-border/60">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={cn(
+                        "flex size-8 items-center justify-center rounded-lg border shrink-0",
+                        isValidated
+                          ? "border-teal/30 bg-teal/10 text-teal"
+                          : "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                      )}
+                    >
+                      {isValidated ? (
+                        <CheckCircle2 className="size-4.5" />
+                      ) : (
+                        <ShieldAlert className="size-4.5" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+                          Validator Agent (Agent 5) Audit
+                        </span>
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border",
+                            isValidated
+                              ? "border-teal/30 bg-teal/10 text-teal"
+                              : "border-amber-500/30 bg-amber-500/10 text-amber-400"
+                          )}
+                        >
+                          {isValidated ? "VERIFIED & GROUNDED" : "AUDIT FLAGS DETECTED"}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        Autonomous fact-checking of cited regulations and decision consistency
+                      </p>
+                    </div>
+                  </div>
+
+                  {forcedReviewLevel && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[11px] text-muted-foreground font-mono">Review Mandate:</span>
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold border uppercase tracking-wider",
+                          forcedReviewLevel === "manager"
+                            ? "border-risk-high/40 bg-risk-high/15 text-risk-high animate-pulse"
+                            : "border-violet/30 bg-violet/10 text-violet"
+                        )}
+                      >
+                        <Lock className="size-3" />
+                        {forcedReviewLevel} Review Enforced
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3-Point Validation Matrix */}
+                <div className="mt-3.5 grid gap-2.5 sm:grid-cols-3 text-xs">
+                  <div
+                    className={cn(
+                      "rounded-lg border p-2.5",
+                      failedChecks.includes("citation_exists") || failedChecks.includes("no_citations_extracted")
+                        ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                        : "border-teal/20 bg-teal/5 text-teal"
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-[11px] uppercase">1. Citation Existence</span>
+                      {failedChecks.includes("citation_exists") || failedChecks.includes("no_citations_extracted") ? (
+                        <span className="text-[10px] text-amber-400 font-bold">FLAGGED</span>
+                      ) : (
+                        <span className="text-[10px] text-teal font-bold">PASSED</span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-[10px] text-muted-foreground leading-snug">
+                      {failedChecks.includes("no_citations_extracted")
+                        ? "Zero statutory citations extracted from report"
+                        : failedChecks.includes("citation_exists")
+                        ? "Cited section not recognized in statutory registry"
+                        : "All cited statutes confirmed in regulatory DB"}
+                    </p>
+                  </div>
+
+                  <div
+                    className={cn(
+                      "rounded-lg border p-2.5",
+                      failedChecks.includes("citation_relevant")
+                        ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                        : "border-teal/20 bg-teal/5 text-teal"
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-[11px] uppercase">2. Statutory Relevance</span>
+                      {failedChecks.includes("citation_relevant") ? (
+                        <span className="text-[10px] text-amber-400 font-bold">LOW OVERLAP</span>
+                      ) : (
+                        <span className="text-[10px] text-teal font-bold">PASSED</span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-[10px] text-muted-foreground leading-snug">
+                      {failedChecks.includes("citation_relevant")
+                        ? "Citation context lacks sufficient keyword overlap with statutory mandate"
+                        : "Claim context closely matches statutory provisions"}
+                    </p>
+                  </div>
+
+                  <div
+                    className={cn(
+                      "rounded-lg border p-2.5",
+                      failedChecks.includes("decision_consistent")
+                        ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                        : "border-teal/20 bg-teal/5 text-teal"
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-[11px] uppercase">3. Decision Consistency</span>
+                      {failedChecks.includes("decision_consistent") ? (
+                        <span className="text-[10px] text-amber-400 font-bold">CONFLICT</span>
+                      ) : (
+                        <span className="text-[10px] text-teal font-bold">PASSED</span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-[10px] text-muted-foreground leading-snug">
+                      {failedChecks.includes("decision_consistent")
+                        ? "Recommended action conflicts with risk score band"
+                        : "Action mathematically aligns with risk band thresholds"}
+                    </p>
+                  </div>
+                </div>
+
+                {failedChecks.length > 0 && (
+                  <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-400 font-medium">
+                    <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
+                    <span>
+                      Audit Notice: Discrepancies detected ({failedChecks.join(", ")}).
+                      Elevated review protocol enforced by Validator Agent.
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </div>

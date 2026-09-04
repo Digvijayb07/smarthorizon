@@ -1,5 +1,4 @@
 import { useNavigate } from "@tanstack/react-router";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { LogOut, Shield, ShieldCheck, UserCheck, ShieldAlert } from "lucide-react";
 import { useRole, type RoleId } from "@/context/RoleContext";
 import { Button } from "@/components/ui/button";
@@ -71,8 +70,6 @@ export function DashboardHeader({
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
-          <ThemeToggle compact />
-
           {/* Role Pill - Locked to authenticated DB session */}
           <div
             className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${badge.className}`}

@@ -1,25 +1,25 @@
 export const THEME_STORAGE_KEY = "smart-horizon-theme";
 
-export type Theme = "light" | "dark";
+export type Theme = "dark";
 
 export function getSystemTheme(): Theme {
-  if (typeof window === "undefined") return "dark";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return "dark";
 }
 
-export function getStoredTheme(): Theme | null {
-  if (typeof window === "undefined") return null;
-  const stored = localStorage.getItem(THEME_STORAGE_KEY);
-  return stored === "light" || stored === "dark" ? stored : null;
+export function getStoredTheme(): Theme {
+  return "dark";
 }
 
 export function resolveTheme(): Theme {
-  return getStoredTheme() ?? getSystemTheme();
+  return "dark";
 }
 
-export function applyTheme(theme: Theme) {
-  document.documentElement.classList.toggle("dark", theme === "dark");
-  document.documentElement.style.colorScheme = theme;
+export function applyTheme(_theme?: string) {
+  if (typeof document !== "undefined") {
+    document.documentElement.classList.add("dark");
+    document.documentElement.classList.remove("light");
+    document.documentElement.style.colorScheme = "dark";
+  }
 }
 
-export const themeInitScript = `(function(){try{var k="${THEME_STORAGE_KEY}";var s=localStorage.getItem(k);var t=s==="light"||s==="dark"?s:(window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.classList.toggle("dark",t==="dark");document.documentElement.style.colorScheme=t;}catch(e){}})();`;
+export const themeInitScript = `(function(){try{document.documentElement.classList.add("dark");document.documentElement.classList.remove("light");document.documentElement.style.colorScheme="dark";localStorage.setItem("${THEME_STORAGE_KEY}","dark");}catch(e){}})();`;

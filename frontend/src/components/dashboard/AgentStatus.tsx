@@ -15,22 +15,24 @@ export interface InvestigationAgentProgress {
   findingCount?: number;
 }
 
-const pipelineAgentIds = ["orchestrator", "data", "risk", "reason"];
+const pipelineAgentIds = ["score", "context", "reason", "decision", "validator"];
 
 const defaultProgress: Record<string, InvestigationAgentProgress> = {
-  orchestrator: { status: "Completed", activity: "Transaction & network telemetry normalized", progress: 100, findingCount: 4 },
-  data: { status: "Completed", activity: "Evidence register compiled & validated", progress: 100, findingCount: 7 },
-  risk: { status: "Running", activity: "Analyzing velocity and graph topological signals", progress: 72, findingCount: 3 },
-  reason: { status: "Waiting", activity: "Awaiting risk engine completion", progress: 0, findingCount: 0 },
+  score: { status: "Completed", activity: "XGBoost scoring + SHAP attribution evaluated", progress: 100, findingCount: 3 },
+  context: { status: "Completed", activity: "Multi-hop graph topology & mule detection", progress: 100, findingCount: 4 },
+  reason: { status: "Completed", activity: "Gemini regulatory synthesis with circular grounding", progress: 100, findingCount: 2 },
+  decision: { status: "Completed", activity: "Action recommendation & maker-checker calibration", progress: 100, findingCount: 1 },
+  validator: { status: "Completed", activity: "Citation verification & decision consistency check", progress: 100, findingCount: 2 },
 };
 
 const pipelineAgents = defaultAgents.filter((agent) => pipelineAgentIds.includes(agent.id));
 
 const serviceNameMap: Record<string, string> = {
-  orchestrator: "Transaction Analysis",
-  data: "Risk Assessment",
-  risk: "Compliance Analysis",
-  reason: "Report Generation",
+  score: "XGBoost Risk Engine",
+  context: "Graph Topology Engine",
+  reason: "Regulatory Reasoning",
+  decision: "Decision Recommendation",
+  validator: "Citation & Audit Validator",
 };
 
 export interface AgentStatusProps {

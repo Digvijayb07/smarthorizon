@@ -38,7 +38,7 @@ class TestPatternDetection:
             recv = f"ACCT-RECV-{i}"
             G.add_edge(sender, recv, amount=1000.0, transaction_id=f"TXN-{i}")
 
-        patterns = _detect_patterns(G, sender, "ACCT-RECV-0")
+        patterns, _, _ = _detect_patterns(G, sender, "ACCT-RECV-0")
         types = [p["type"] for p in patterns]
         assert "FAN_OUT" in types, f"Expected FAN_OUT, got: {types}"
 
@@ -50,7 +50,7 @@ class TestPatternDetection:
             sender = f"ACCT-SEND-{i}"
             G.add_edge(sender, receiver, amount=1000.0, transaction_id=f"TXN-{i}")
 
-        patterns = _detect_patterns(G, "ACCT-SEND-0", receiver)
+        patterns, _, _ = _detect_patterns(G, "ACCT-SEND-0", receiver)
         types = [p["type"] for p in patterns]
         assert "FAN_IN" in types, f"Expected FAN_IN, got: {types}"
 
@@ -61,23 +61,23 @@ class TestPatternDetection:
         G.add_edge("B", "C", amount=1000)
         G.add_edge("C", "A", amount=1000)
 
-        patterns = _detect_patterns(G, "A", "B")
+        patterns, _, _ = _detect_patterns(G, "A", "B")
         types = [p["type"] for p in patterns]
         assert "CIRCULAR" in types, f"Expected CIRCULAR, got: {types}"
 
     def test_velocity_detected(self):
-        """6+ outbound edges should produce VELOCITY."""
+        """6+ outbound edges should produce FAN_OUT dispersion pattern."""
         G = nx.DiGraph()
         sender = "ACCT-FAST"
         for i in range(6):
             G.add_edge(sender, f"ACCT-R-{i}", amount=500, transaction_id=f"TXN-{i}")
 
-        patterns = _detect_patterns(G, sender, "ACCT-R-0")
+        patterns, _, _ = _detect_patterns(G, sender, "ACCT-R-0")
         types = [p["type"] for p in patterns]
-        assert "VELOCITY" in types, f"Expected VELOCITY, got: {types}"
+        assert "FAN_OUT" in types, f"Expected FAN_OUT, got: {types}"
 
     def test_mule_network_detected(self):
-        """Fan-out + circular together should produce MULE_NETWORK."""
+        """Fan-out + circular together should produce FAN_OUT, CIRCULAR, and LAYERED_MULE."""
         G = nx.DiGraph()
         sender = "MULE"
         G.add_edge(sender, "A", amount=1000)
@@ -88,17 +88,17 @@ class TestPatternDetection:
         G.add_edge("A", "B", amount=500)
         G.add_edge("B", "MULE", amount=500)
 
-        patterns = _detect_patterns(G, sender, "A")
+        patterns, _, _ = _detect_patterns(G, sender, "A")
         types = [p["type"] for p in patterns]
         assert "FAN_OUT" in types
         assert "CIRCULAR" in types
-        assert "MULE_NETWORK" in types, f"Expected MULE_NETWORK, got: {types}"
+        assert "LAYERED_MULE" in types, f"Expected LAYERED_MULE, got: {types}"
 
     def test_single_transaction_no_patterns(self):
         """A single sender→receiver edge should detect NO patterns."""
         G = nx.DiGraph()
         G.add_edge("A", "B", amount=1000)
-        patterns = _detect_patterns(G, "A", "B")
+        patterns, _, _ = _detect_patterns(G, "A", "B")
         assert patterns == [], f"Expected no patterns, got: {patterns}"
 
 

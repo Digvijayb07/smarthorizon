@@ -137,6 +137,7 @@ function CaseWorkspacePage() {
   const [counterfactualResult, setCounterfactualResult] = useState<CounterfactualInsight | null>(null);
   const [regulatoryClausesResult, setRegulatoryClausesResult] = useState<Record<string, RegulatoryClause> | null>(null);
   const [citedClausesResult, setCitedClausesResult] = useState<string[] | null>(null);
+  const [validatorResult, setValidatorResult] = useState<any>(null);
 
   // Fetch real case data from backend
   const {
@@ -168,6 +169,13 @@ function CaseWorkspacePage() {
       if (data.counterfactual) setCounterfactualResult(data.counterfactual);
       if (data.regulatory_clauses) setRegulatoryClausesResult(data.regulatory_clauses);
       if (data.cited_clauses) setCitedClausesResult(data.cited_clauses);
+      setValidatorResult(
+        data.validator || {
+          validated: data.validated,
+          failed_checks: data.failed_checks,
+          forced_review_level: data.forced_review_level,
+        }
+      );
       queryClient.invalidateQueries({ queryKey: ["case", caseId] });
       queryClient.invalidateQueries({ queryKey: ["cases"] });
       queryClient.invalidateQueries({ queryKey: ["auditLog"] });
@@ -389,6 +397,7 @@ function CaseWorkspacePage() {
         agents={agents}
         regulatorySources={regulatorySources}
         report={report}
+        validatorData={validatorResult}
         onRunInvestigation={() => investigateMutation.mutate()}
         isInvestigating={investigateMutation.isPending}
         onDecision={(decisionCode, notes) =>

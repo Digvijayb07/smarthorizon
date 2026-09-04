@@ -1,11 +1,12 @@
 """
 Investigate Router — /api/investigate
 ======================================
-Orchestrator: triggers the full 4-agent investigation pipeline.
-  1. scoreAgent   -> Centralized XGBoost risk score + SHAP (via routers.score)
-  2. contextAgent -> Graph analysis from graph_agent with real pattern detection
-  3. reasonAgent  -> gemini-2.5-flash + Regulatory Grounding -> Case summary
-  4. decisionAgent-> Action recommendation (BLOCK / FLAG / MONITOR / ALLOW)
+Orchestrator: triggers the full 5-agent investigation pipeline.
+  1. scoreAgent    -> Centralized XGBoost risk score + SHAP (via routers.score)
+  2. contextAgent  -> Graph analysis from graph_agent with real pattern detection
+  3. reasonAgent   -> gemini-2.5-flash + Regulatory Grounding -> Case summary
+  4. decisionAgent -> Action recommendation (BLOCK / FLAG / MONITOR / ALLOW)
+  5. validatorAgent-> Fact-checks regulatory citations & decision consistency
 
 Returns a complete evidence package JSON.
 """
@@ -24,10 +25,11 @@ from google import genai as google_genai
 from google.genai import types as genai_types
 
 from database import get_db, log_audit
-from state import app_state
 from auth import current_user, CurrentUser
 from routers.score import score_transaction, _band_from_proba, _action_from_band
 from regulatory import REGULATORY_CLAUSES, extract_cited_clauses, format_clauses_for_prompt
+from counterfactual import generate_counterfactual
+from agents.validator_agent import validate_investigation as _validate_investigation
 
 router = APIRouter(dependencies=[Depends(current_user)])
 
@@ -198,7 +200,7 @@ async def run_investigation(
 ):
     """
     Autonomous Multi-Agent Investigation Pipeline:
-    1. scoreAgent: XGBoost 23-feature inference + SHAP attribution (via centralized score_transaction)
+    1. scoreAgent: XGBoost 14-feature inference + SHAP attribution (via centralized score_transaction)
     2. contextAgent: Multi-transaction graph analysis via graph_agent with real pattern detection
     3. reasonAgent: Gemini analysis grounded in RBI/PMLA regulations
     4. decisionAgent: Action recommendation & idempotent case creation
@@ -225,14 +227,20 @@ async def run_investigation(
     txn_dict = dict(txn)
 
     # ── 1. scoreAgent (centralized scoring) ───────────────────────────────────
+    sender_account = txn_dict.get("sender_account") or txn_dict.get("sender_id", "UNKNOWN")
+    receiver_account = txn_dict.get("receiver_account") or txn_dict.get("receiver_id", "UNKNOWN")
+
     txn_for_model = {
         "step": txn_dict.get("step", 1),
         "type": txn_dict.get("type", "TRANSFER"),
         "amount": txn_dict.get("amount", 0),
+        "nameOrig": sender_account,
+        "nameDest": receiver_account,
         "oldbalanceOrg": txn_dict.get("old_balance_orig", 0),
         "newbalanceOrig": txn_dict.get("new_balance_orig", 0),
         "oldbalanceDest": txn_dict.get("old_balance_dest", 0),
         "newbalanceDest": txn_dict.get("new_balance_dest", 0),
+        "severity": txn_dict.get("severity"),
     }
     try:
         score_result = score_transaction(txn_for_model)
@@ -362,6 +370,35 @@ async def run_investigation(
         "edge_count": G.number_of_edges(),
     }
 
+    # ── Composite Risk Synthesis (Combine ML, Graph Network Risk & Case Baseline) ──
+    final_risk_score = float(score_result.get("risk_score", 50.0))
+    if existing_case and existing_case["risk_score"] is not None:
+        final_risk_score = max(final_risk_score, float(existing_case["risk_score"]))
+    if network_risk == "CRITICAL":
+        final_risk_score = max(final_risk_score, 90.0)
+    elif network_risk == "HIGH":
+        final_risk_score = max(final_risk_score, 75.0)
+
+    final_risk_score = min(100.0, round(final_risk_score, 1))
+    score_result["risk_score"] = final_risk_score
+    score_result["probability"] = round(final_risk_score / 100.0, 4)
+
+    if final_risk_score >= 80.0:
+        score_result["risk_band"] = "CRITICAL"
+        if existing_case and existing_case["recommended_action"] in ("ESCALATE", "BLOCK"):
+            score_result["recommended_action"] = existing_case["recommended_action"]
+        else:
+            score_result["recommended_action"] = "ESCALATE" if network_risk in ("CRITICAL", "HIGH") else "BLOCK"
+    elif final_risk_score >= 50.0:
+        score_result["risk_band"] = "HIGH"
+        score_result["recommended_action"] = existing_case["recommended_action"] if (existing_case and existing_case["recommended_action"]) else "FLAG"
+    elif final_risk_score >= 20.0:
+        score_result["risk_band"] = "MEDIUM"
+        score_result["recommended_action"] = existing_case["recommended_action"] if (existing_case and existing_case["recommended_action"]) else "MONITOR"
+    else:
+        score_result["risk_band"] = "LOW"
+        score_result["recommended_action"] = existing_case["recommended_action"] if (existing_case and existing_case["recommended_action"]) else "ALLOW"
+
     # ── 3. reasonAgent (Gemini LLM) ──────────────────────────────────────────
     prompt = _build_llm_prompt(txn_dict, score_result, graph_context)
     llm_report, ai_generated = await _call_gemini_or_fallback(prompt, txn_dict, score_result, graph_context)
@@ -430,6 +467,30 @@ async def run_investigation(
         patterns=patterns,
     )
 
+    # ── 6. validatorAgent (Citation & Decision Audit) ────────────────────────
+    decision_for_validator = {
+        "action": composite_action,
+        "recommended_action": composite_action,
+        "confidence": round(composite_risk_score / 100.0, 4),
+        "reasoning": f"Based on composite risk score of {composite_risk_score}",
+    }
+    try:
+        validator_result = _validate_investigation(
+            reason_output=llm_report,
+            decision_output=decision_for_validator,
+            risk_score=composite_risk_score,
+            regulations_db=conn,
+        )
+    except Exception as e:
+        print(f"[VALIDATOR AGENT ERROR] {e}")
+        validator_result = {
+            "validated": False,
+            "failed_checks": ["validator_error"],
+            "forced_review_level": "manager",
+            "details": {"error": str(e)},
+        }
+
+    # ── 7. Build full evidence package ────────────────────────────────────────
     evidence_package = {
         "case_id": case_id,
         "transaction_id": actual_txn_id,
@@ -441,7 +502,7 @@ async def run_investigation(
         "model_probability": score_result.get("model_probability", 0),
         "risk_level": composite_risk_band,
         "risk_band": composite_risk_band,
-        "probability": score_result["probability"],
+        "probability": round(composite_risk_score / 100.0, 4),
         "top_factors": score_result["top_factors"],
         "shap_values": score_result.get("shap_values", {}),
         "rule_adjustments": score_result.get("rule_adjustments", []),
@@ -455,24 +516,34 @@ async def run_investigation(
         "llm_analysis": llm_report,
         "str_draft": str_draft,
         "recommended_action": composite_action,
-        "confidence": score_result["probability"],
+        "confidence": round(composite_risk_score / 100.0, 4),
         "ai_generated": ai_generated,
         "reasoning_source": "gemini-3.6-flash" if ai_generated else "regulatory-fallback-template",
         "investigated_at": now,
+        # validatorAgent result (always present; check validated == False for flagged cases)
+        "validator": validator_result,
+        "validated": validator_result["validated"],
+        "failed_checks": validator_result["failed_checks"],
+        "forced_review_level": validator_result["forced_review_level"],
         "audit_logged": False,
     }
 
-    # ── 6. Persist to DB + audit log (idempotent) ────────────────────────────
+    # ── 8. Persist to DB + audit log (idempotent) ────────────────────────────
+    _failed_checks_json = json.dumps(validator_result["failed_checks"])
     if auto_create_case:
         if existing_case:
             conn.execute(
                 """UPDATE cases
                    SET risk_score=?, risk_band=?, recommended_action=?,
-                       investigation_report=?, str_draft=?, updated_at=?
+                       investigation_report=?, str_draft=?, updated_at=?,
+                       validated=?, failed_checks=?, forced_review_level=?
                    WHERE case_id=?""",
                 (
                     composite_risk_score, composite_risk_band,
                     composite_action, llm_report, str_draft, now,
+                    int(validator_result["validated"]),
+                    _failed_checks_json,
+                    validator_result["forced_review_level"],
                     case_id,
                 ),
             )
@@ -481,20 +552,32 @@ async def run_investigation(
                 """INSERT INTO cases
                   (case_id, transaction_id, status, risk_score, risk_band,
                    recommended_action, analyst_id, investigation_report,
-                   str_draft, opened_at, updated_at)
-                  VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                   str_draft, opened_at, updated_at,
+                   validated, failed_checks, forced_review_level)
+                  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     case_id, actual_txn_id, "OPEN",
                     composite_risk_score, composite_risk_band,
                     composite_action, user.email,
                     llm_report, str_draft, now, now,
+                    int(validator_result["validated"]),
+                    _failed_checks_json,
+                    validator_result["forced_review_level"],
                 ),
             )
         conn.commit()
         log_audit(
             conn, case_id, "INVESTIGATION_COMPLETED",
             actor=user.email,
-            details=f"CompositeScore={composite_risk_score}, Action={composite_action}, ML={score_result['risk_score']}, Network={network_risk}, AI={ai_generated}",
+            details=(
+                f"CompositeScore={composite_risk_score}, "
+                f"Action={composite_action}, "
+                f"ML={score_result['risk_score']}, "
+                f"Network={network_risk}, "
+                f"AI={ai_generated}, "
+                f"Validated={validator_result['validated']}, "
+                f"FailedChecks={_failed_checks_json}"
+            ),
         )
         evidence_package["audit_logged"] = True
 
