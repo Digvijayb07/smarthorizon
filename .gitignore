@@ -145,4 +145,6 @@ PROJECT_STATUS_AND_MERGE_SUMMARY.md
 walkthrough.md
 HACKATHON_DEMO_AND_LEDGER_UI_PLAN.md
 SAFE_FLOW_34HR_IMPLEMENTATION_PLAN.md
-ledger/
+ledger/node_modules/
+ledger/.env
+ledger/README.md
