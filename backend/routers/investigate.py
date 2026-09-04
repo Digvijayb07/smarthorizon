@@ -25,6 +25,7 @@ from google import genai as google_genai
 from google.genai import types as genai_types
 
 from database import get_db, log_audit
+from state import app_state
 from auth import current_user, CurrentUser
 from routers.score import score_transaction, _band_from_proba, _action_from_band
 from regulatory import REGULATORY_CLAUSES, extract_cited_clauses, format_clauses_for_prompt
