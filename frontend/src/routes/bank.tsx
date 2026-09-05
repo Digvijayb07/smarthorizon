@@ -430,8 +430,8 @@ function BankSimulatorPage() {
     if (!victim || mules.length === 0) return;
 
     const targetMule = mules[(step - 1) % mules.length]!;
-    const amounts = [34500, 36200, 32800, 38000];
-    const amt = amounts[step - 1] || 34500;
+    const amounts = [48500, 49200, 47800, 46900];
+    const amt = amounts[step - 1] || 48500;
 
     addLog(
       `▶ [SCENARIO B · STEP ${step}/4] Dispatching ₹${amt.toLocaleString("en-IN")} to ${targetMule.name} (< ₹50k PMLA threshold)...`,
@@ -463,7 +463,7 @@ function BankSimulatorPage() {
         setScenarioBStep(2);
       } else if (step === 3) {
         addLog(
-          `[Hop 3/4] ₹${amt.toLocaleString("en-IN")} -> ${targetMule.name} | ⚠️ SAFEFLOW NETWORK ENGINE: Structuring threshold breached (₹1,03,500 total in <10m)!`,
+          `[Hop 3/4] ₹${amt.toLocaleString("en-IN")} -> ${targetMule.name} | ⚠️ SAFEFLOW NETWORK ENGINE: Structuring threshold breached (₹1,45,500 total in <10m)!`,
           "warn"
         );
         setScenarioBStep(3);
@@ -1051,7 +1051,7 @@ function BankSimulatorPage() {
                       )}
                     >
                       <span className="font-bold">Hop 1</span>
-                      <span className="text-[8.5px]">₹34.5k</span>
+                      <span className="text-[8.5px]">₹48.5k</span>
                     </Button>
 
                     <Button
@@ -1067,7 +1067,7 @@ function BankSimulatorPage() {
                       )}
                     >
                       <span className="font-bold">Hop 2</span>
-                      <span className="text-[8.5px]">₹36.2k</span>
+                      <span className="text-[8.5px]">₹49.2k</span>
                     </Button>
 
                     <Button
@@ -1083,7 +1083,7 @@ function BankSimulatorPage() {
                       )}
                     >
                       <span className="font-bold text-amber-400">Hop 3 ⚠️</span>
-                      <span className="text-[8.5px]">₹32.8k</span>
+                      <span className="text-[8.5px]">₹47.8k</span>
                     </Button>
 
                     <Button
@@ -1099,7 +1099,7 @@ function BankSimulatorPage() {
                       )}
                     >
                       <span className="font-bold text-violet-400">Hop 4 🕸️</span>
-                      <span className="text-[8.5px]">₹38.0k</span>
+                      <span className="text-[8.5px]">₹46.9k</span>
                     </Button>
                   </div>
                 </div>

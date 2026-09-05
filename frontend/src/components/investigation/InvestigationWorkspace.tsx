@@ -737,13 +737,33 @@ export function InvestigationWorkspace({
                   Escalate to Manager
                 </Button>
               </div>
-              <span className="text-[10px] text-muted-foreground font-mono">
-                {role === "investigator"
-                  ? "• Mode: Investigator (Escalate recommendation)"
-                  : role === "manager"
-                  ? "• Mode: Manager (Approval sign-off active)"
-                  : "• Mode: Administrator (Audit view)"}
-              </span>
+              <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground font-mono">
+                <span>
+                  {role === "investigator"
+                    ? "• Mode: Investigator (1st Line Maker) — Under RBI Maker-Checker policy, Block & Dismiss require Manager sign-off."
+                    : role === "manager"
+                    ? "• Mode: Manager (2nd Line Checker) — Block & Dismiss authorizations active."
+                    : "• Mode: Administrator (System Admin) — Full audit & override view."}
+                </span>
+                {role === "investigator" && (
+                  <button
+                    type="button"
+                    onClick={() => loginWithRole("manager")}
+                    className="text-violet hover:text-violet/80 underline font-semibold transition-colors cursor-pointer"
+                  >
+                    Switch to Manager (Sarah Chen) →
+                  </button>
+                )}
+                {role === "manager" && (
+                  <button
+                    type="button"
+                    onClick={() => loginWithRole("investigator")}
+                    className="text-muted-foreground hover:text-foreground underline transition-colors cursor-pointer"
+                  >
+                    Switch back to Investigator
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
