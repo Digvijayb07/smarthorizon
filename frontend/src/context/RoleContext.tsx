@@ -47,15 +47,15 @@ export const ROLE_DEFENSE_TIERS: Record<RoleId, DefenseTierInfo> = {
   investigator: {
     tier: "1st Line",
     name: "1st Line of Defense (Detection & Evidence)",
-    duty: "Detects, triages, and builds evidence. Prohibited from unilateral freeze/dismissal.",
-    scope: "Maker / Submits Escalate Recommendation",
+    duty: "Detects, triages, builds evidence, and dismisses false positives. Account freezing requires Manager sign-off.",
+    scope: "Maker / Triage, Dismiss False Positives & Escalate",
     badgeClass: "bg-blue-500/10 text-blue-400 border-blue-500/30",
   },
   manager: {
     tier: "2nd Line",
     name: "2nd Line of Defense (Maker-Checker Oversight)",
-    duty: "Independent review of investigator evidence. Holds sole authority to approve Block/Dismiss.",
-    scope: "Checker / Approves or Rejects Final Actions",
+    duty: "Independent review of investigator evidence. Holds sole authority to approve Block & Report.",
+    scope: "Checker / Approves Account Freezes & Regulatory Escalations",
     badgeClass: "bg-amber-500/10 text-amber-400 border-amber-500/30",
   },
   administrator: {

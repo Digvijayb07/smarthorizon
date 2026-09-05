@@ -709,19 +709,18 @@ export function InvestigationWorkspace({
                 <Button
                   type="button"
                   variant={localDecision === "Dismiss" ? "default" : "outline"}
-                  disabled={isSubmittingDecision || !recommendationReasoning || role === "investigator"}
+                  disabled={isSubmittingDecision || !recommendationReasoning}
                   onClick={() => handleDecisionClick("Dismiss", "DISMISS")}
                   className={cn(
                     "gap-1.5 text-xs border-risk-low/30 text-risk-low",
-                    recommendationReasoning && role !== "investigator"
+                    recommendationReasoning
                       ? "hover:bg-risk-low/10"
                       : "opacity-40 cursor-not-allowed"
                   )}
-                  title={role === "investigator" ? "Requires manager sign-off" : undefined}
+                  title="Dismiss case if verified benign or false positive"
                 >
                   <ShieldCheck className="size-4" />
                   Dismiss Case
-                  {role === "investigator" && <Lock className="size-3 ml-1" />}
                 </Button>
                 <Button
                   type="button"
@@ -740,9 +739,9 @@ export function InvestigationWorkspace({
               <div className="flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground font-mono">
                 <span>
                   {role === "investigator"
-                    ? "• Mode: Investigator (1st Line Maker) — Under RBI Maker-Checker policy, Block & Dismiss require Manager sign-off."
+                    ? "• Mode: Investigator (1st Line) — Can Dismiss false positives or Escalate. Account Blocking requires Manager sign-off."
                     : role === "manager"
-                    ? "• Mode: Manager (2nd Line Checker) — Block & Dismiss authorizations active."
+                    ? "• Mode: Manager (2nd Line Checker) — Signatory authority & Account Blocking active."
                     : "• Mode: Administrator (System Admin) — Full audit & override view."}
                 </span>
                 {role === "investigator" && (

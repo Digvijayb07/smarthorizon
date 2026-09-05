@@ -245,12 +245,10 @@ async def submit_decision(
     """
     Analyst submits a decision on a case.
     analyst_id is derived from the authenticated user — never accepted from client input.
-    Investigators can ESCALATE; Managers/Admins hold signatory authority for APPROVE_BLOCK/DISMISS.
-    """
-    if user.role == "investigator" and body.decision != "ESCALATE":
+    if user.role == "investigator" and body.decision not in ("ESCALATE", "DISMISS", "APPROVE_FLAG"):
         raise HTTPException(
             403,
-            "Three Lines of Defense & RBI Maker-Checker Policy: AML Investigators (1st Line) can only escalate findings. Irreversible enforcement (Block/Dismiss) requires independent Manager authorization (2nd Line).",
+            "Three Lines of Defense & RBI Maker-Checker Policy: AML Investigators (1st Line) can triage, flag, or dismiss false positives. Account freezing (Block & Report) requires independent Manager authorization (2nd Line).",
         )
 
     clean_id = case_id.strip().replace(" ", "-")

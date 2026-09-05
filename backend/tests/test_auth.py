@@ -73,11 +73,11 @@ class TestRoleBasedAccess:
         r = requests.get(f"{BASE}/api/cases/", headers=_auth_header(token))
         assert r.status_code == 200
 
-    def test_investigator_cannot_submit_decision(self):
+    def test_investigator_cannot_submit_block_decision(self):
         token = _login("marcus.johnson@smarthorizon.ai")
         r = requests.post(
             f"{BASE}/api/cases/FC-FAKE/decision",
-            json={"decision": "DISMISS", "notes": "test"},
+            json={"decision": "APPROVE_BLOCK", "notes": "test"},
             headers=_auth_header(token),
         )
         assert r.status_code == 403
