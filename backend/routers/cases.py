@@ -245,6 +245,7 @@ async def submit_decision(
     """
     Analyst submits a decision on a case.
     analyst_id is derived from the authenticated user — never accepted from client input.
+    """
     if user.role == "investigator" and body.decision not in ("ESCALATE", "DISMISS", "APPROVE_FLAG"):
         raise HTTPException(
             403,
