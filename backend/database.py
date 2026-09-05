@@ -173,8 +173,20 @@ def init_db():
             pass  # Column already exists
 
     seed_regulations(conn)
-
     conn.commit()
+
+    # Self-healing: If fresh cloud container has no cases, auto-populate baseline clusters
+    try:
+        case_count = c.execute("SELECT count(*) FROM cases").fetchone()[0]
+        if case_count == 0:
+            conn.close()
+            from seed_graph_clusters import seed
+            seed()
+            print(f"[OK] Fresh database detected: auto-seeded baseline clusters.")
+            conn = sqlite3.connect(DB_PATH)
+    except Exception as e:
+        print(f"[STARTUP NOTICE] Auto-seed check: {e}")
+
     conn.close()
     print(f"[OK] Database initialized: {DB_PATH}")
 

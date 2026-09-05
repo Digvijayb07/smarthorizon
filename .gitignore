@@ -138,8 +138,10 @@ ML/*.pkl
 
 .output/
 .wrangler/
+.vercel/
 frontend/.output/
 frontend/.wrangler/
+frontend/.vercel/
 
 
 horizon2_audit_and_test_plan.md
