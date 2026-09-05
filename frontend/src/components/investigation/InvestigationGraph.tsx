@@ -133,13 +133,13 @@ export function InvestigationGraph({
       )}
 
       {/* Dynamic Graph Canvas with generous vertical breathing room */}
-      <div className="mt-4 relative w-full min-h-[460px] sm:min-h-[500px] rounded-xl border border-border bg-background/70 p-4 overflow-hidden shadow-inner">
+      <div className="mt-4 relative w-full h-[460px] sm:h-[500px] rounded-xl border border-border bg-background/70 p-4 overflow-hidden shadow-inner">
         {nodes.length === 0 ? (
           <div className="flex size-full items-center justify-center text-xs text-muted-foreground">
             No transaction nodes to display
           </div>
         ) : (
-          <div className="relative size-full min-h-[430px] sm:min-h-[470px]">
+          <div className="relative size-full">
             {/* SVG Connecting Lines with directional flow */}
             <svg
               viewBox="0 0 100 100"
@@ -248,10 +248,10 @@ export function InvestigationGraph({
                   </div>
 
                   {/* Compact Account Badge & Role Tag */}
-                  <div className="flex flex-col items-center max-w-[95px]">
+                  <div className="flex flex-col items-center max-w-[120px]">
                     <span
                       className={cn(
-                        "rounded bg-background/95 px-1.5 py-0.2 font-mono text-[8.5px] font-semibold border shadow-2xs tracking-tight truncate",
+                        "rounded bg-background/95 px-2 py-0.5 font-mono text-[9px] font-semibold border shadow-xs tracking-tight truncate",
                         isSelected ? "border-pink-500 text-pink-400 font-bold" : "border-border text-foreground"
                       )}
                     >
@@ -259,7 +259,7 @@ export function InvestigationGraph({
                     </span>
                     <span
                       className={cn(
-                        "mt-0.5 rounded px-1 py-0.2 text-[7px] font-bold uppercase tracking-wider font-mono border whitespace-nowrap",
+                        "mt-1 rounded px-1.5 py-0.5 text-[7.5px] font-bold uppercase tracking-wider font-mono border whitespace-nowrap",
                         roleMeta.color
                       )}
                     >

@@ -55,37 +55,37 @@ export function RiskIntelligencePanel({
         <AlertTriangle className="size-5 text-risk-high" aria-hidden="true" />
       </div>
 
-      {/* Dual Risk Side-by-Side: ML Transaction Risk + NetworkX Graph Risk */}
-      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {/* Dual Risk Cards: ML Transaction Risk + NetworkX Graph Risk */}
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-1">
         {/* ML Transaction Risk */}
-        <div className="rounded-xl border border-border bg-muted/40 p-3.5">
-          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-            ML Transaction Risk
-          </span>
-          <div className="mt-1.5 flex items-end justify-between">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-3xl font-bold tabular-nums text-foreground">{displayMlValue}</span>
-              <span className="text-xs text-muted-foreground">/ {risk.max}</span>
-            </div>
-            <span className={cn("rounded-md border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider font-mono", levelStyle[displayMlLevel] || levelStyle.LOW)}>
+        <div className="rounded-xl border border-border/70 bg-muted/20 p-3.5 sm:p-4 transition-colors hover:border-border">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-mono text-[10px] sm:text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+              ML Transaction Risk
+            </span>
+            <span className={cn("rounded-md border px-2 py-0.5 text-[9px] sm:text-[9.5px] font-bold uppercase tracking-wider font-mono shrink-0", levelStyle[displayMlLevel] || levelStyle.LOW)}>
               {displayMlLevel}
             </span>
+          </div>
+          <div className="mt-2.5 flex items-baseline gap-1.5">
+            <span className="text-3xl font-extrabold tabular-nums tracking-tight text-foreground">{displayMlValue}</span>
+            <span className="text-xs font-semibold text-muted-foreground">/ {risk.max}</span>
           </div>
           <span className="mt-1.5 block text-[10px] text-muted-foreground font-mono">XGBoost Feature Attribution</span>
         </div>
 
         {/* NetworkX Relational Risk */}
-        <div className="rounded-xl border border-border bg-muted/40 p-3.5">
-          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-            Network Topology Risk
-          </span>
-          <div className="mt-1.5 flex items-end justify-between">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-2xl font-bold font-mono tracking-tight text-foreground">{netRiskLevel}</span>
-            </div>
-            <span className={cn("rounded-md border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider font-mono", netStyle)}>
+        <div className="rounded-xl border border-border/70 bg-muted/20 p-3.5 sm:p-4 transition-colors hover:border-border">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-mono text-[10px] sm:text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Network Topology Risk
+            </span>
+            <span className={cn("rounded-md border px-2 py-0.5 text-[9px] sm:text-[9.5px] font-bold uppercase tracking-wider font-mono shrink-0", netStyle)}>
               NetworkX
             </span>
+          </div>
+          <div className="mt-2.5 flex items-baseline gap-1.5">
+            <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-foreground">{netRiskLevel}</span>
           </div>
           <span className="mt-1.5 block text-[10px] text-muted-foreground truncate" title={networkRiskSummary || "Multi-hop Graph Analysis"}>
             {networkRiskSummary || "Multi-hop Relational Analysis"}
@@ -100,8 +100,8 @@ export function RiskIntelligencePanel({
         <div className="mt-3 space-y-2.5">
           {majorFactors.map((factor) => (
             <div key={factor.label} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2.5">
-              <span className="text-xs text-foreground">{factor.label}</span>
-              <span className="font-mono text-[11px] font-semibold text-risk-high">+{factor.contribution}</span>
+              <span className="text-xs text-foreground truncate">{factor.label}</span>
+              <span className="font-mono text-[11px] font-semibold text-risk-high tabular-nums shrink-0">+{factor.contribution}</span>
             </div>
           ))}
         </div>

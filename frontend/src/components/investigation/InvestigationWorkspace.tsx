@@ -191,8 +191,8 @@ export function InvestigationWorkspace({
     <div className="mx-auto max-w-7xl space-y-6 pb-10">
       {/* Header */}
       <header className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-xs">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div>
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-semibold tracking-[0.16em] text-muted-foreground uppercase font-mono">
                 Investigation workspace
@@ -201,14 +201,14 @@ export function InvestigationWorkspace({
                 AI + Human-in-the-Loop
               </span>
             </div>
-            <h1 className="mt-2 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+            <h1 className="mt-2 text-xl sm:text-2xl xl:text-3xl font-bold tracking-tight text-foreground">
               Case {caseData.id}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">{caseData.alert}</p>
           </div>
 
           {/* Action button & metadata */}
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
             {onRunInvestigation && (
               <Button
                 onClick={onRunInvestigation}
@@ -230,7 +230,7 @@ export function InvestigationWorkspace({
               </Button>
             )}
 
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 min-w-[340px]">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <div className="rounded-xl border border-border bg-muted/30 px-3 py-2">
                 <p className="text-[9px] text-muted-foreground uppercase font-mono">Risk Level</p>
                 <p
@@ -272,7 +272,7 @@ export function InvestigationWorkspace({
       </header>
 
       {/* Graph and Risk Panels */}
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
         <InvestigationGraph
           nodes={nodes}
           edges={edges}
