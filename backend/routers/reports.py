@@ -25,7 +25,8 @@ async def generate_str_draft(
     Generate a Suspicious Transaction Report (STR) draft
     in FIU-IND format for submission to Financial Intelligence Unit - India.
     """
-    case = conn.execute("SELECT * FROM cases WHERE case_id = ?", (case_id,)).fetchone()
+    clean_id = case_id.strip().replace(" ", "-")
+    case = conn.execute("SELECT * FROM cases WHERE case_id = ? OR case_id = ?", (case_id, clean_id)).fetchone()
     if not case:
         raise HTTPException(404, f"Case {case_id} not found")
 
@@ -110,7 +111,8 @@ async def get_full_report(
     _: CurrentUser = Depends(current_user),
 ):
     """Get the complete investigation report for a case."""
-    case = conn.execute("SELECT * FROM cases WHERE case_id = ?", (case_id,)).fetchone()
+    clean_id = case_id.strip().replace(" ", "-")
+    case = conn.execute("SELECT * FROM cases WHERE case_id = ? OR case_id = ?", (case_id, clean_id)).fetchone()
     if not case:
         raise HTTPException(404, f"Case {case_id} not found")
 

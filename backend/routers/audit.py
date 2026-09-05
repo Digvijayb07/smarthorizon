@@ -22,9 +22,10 @@ async def get_audit_log(
 ):
     """Get audit log entries, optionally filtered by case."""
     if case_id:
+        clean_id = case_id.strip().replace(" ", "-")
         rows = conn.execute(
-            "SELECT * FROM audit_log WHERE case_id = ? ORDER BY timestamp DESC LIMIT ?",
-            (case_id, limit)
+            "SELECT * FROM audit_log WHERE case_id = ? OR case_id = ? ORDER BY timestamp DESC LIMIT ?",
+            (case_id, clean_id, limit)
         ).fetchall()
     else:
         rows = conn.execute(

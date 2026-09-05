@@ -339,7 +339,8 @@ async def get_transaction_graph(
     edges with amounts/channels, detected relational patterns (STRUCTURING, FAN_OUT,
     FAN_IN, CIRCULAR, LAYERED_MULE), and composite dual network risk scoring.
     """
-    case = conn.execute("SELECT * FROM cases WHERE case_id = ?", (case_id,)).fetchone()
+    clean_id = case_id.strip().replace(" ", "-")
+    case = conn.execute("SELECT * FROM cases WHERE case_id = ? OR case_id = ?", (case_id, clean_id)).fetchone()
     if not case:
         raise HTTPException(404, detail=f"Case {case_id} not found")
 

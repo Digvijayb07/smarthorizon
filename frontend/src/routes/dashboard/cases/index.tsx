@@ -83,7 +83,8 @@ function CasesListPage() {
         limit: 50,
       }),
     retry: 1,
-    staleTime: 10_000,
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   // Use backend data if available, fallback to mock

@@ -312,9 +312,10 @@ async def run_investigation(
     """
     # ── Idempotent case lookup ────────────────────────────────────────────────
     # Check by both case_id AND transaction_id to prevent duplicate cases
+    clean_id = transaction_id.strip().replace(" ", "-")
     existing_case = conn.execute(
-        "SELECT * FROM cases WHERE case_id = ? OR transaction_id = ?",
-        (transaction_id, transaction_id),
+        "SELECT * FROM cases WHERE case_id = ? OR case_id = ? OR transaction_id = ?",
+        (transaction_id, clean_id, transaction_id),
     ).fetchone()
 
     actual_txn_id = transaction_id

@@ -344,30 +344,73 @@ def execute_simulator_transfer(
         recommended_action = "ESCALATE"
         case_id = "FC-20260904-STR01"
 
-    elif score["risk_score"] >= THRESHOLD_HIGH or req.amount >= 400000 or (req.scenario == "A" and req.step_number == 3):
+    elif req.scenario == "A" and req.step_number == 3:
         composite_risk_score = max(score["risk_score"], 98.3)
         composite_risk_band = "CRITICAL"
         recommended_action = "ESCALATE"
         case_id = "FC-20260815-8E916E"
 
+    elif score["risk_score"] >= THRESHOLD_HIGH or req.amount >= 200000 or composite_risk_band in ("HIGH", "CRITICAL"):
+        composite_risk_score = max(score["risk_score"], 98.3)
+        composite_risk_band = "CRITICAL"
+        recommended_action = "ESCALATE"
+        clean_hex = str(txn_oid)[-6:].upper()
+        case_id = f"FC-{now_utc.strftime('%Y%m%d')}-{clean_hex}"
+
+    sender_name = from_acc.get("accountHolderName", "Demo Sender")
+    sender_acc_num = from_acc.get("accountNumber", str(from_acc_oid))
+    sender_bank = from_acc.get("bankName", "Apex Bank")
+
+    receiver_name = to_acc.get("accountHolderName", "Demo Recipient")
+    receiver_acc_num = to_acc.get("accountNumber", str(to_acc_oid))
+    receiver_bank = to_acc.get("bankName", "Apex Bank")
+
+    # Ensure customers exist in SQLite for topology & KYC profile display
+    try:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO customers (
+                customer_id, name, account_id, bank, kyc_status, risk_category, city, phone, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(from_acc_oid), sender_name, sender_acc_num, sender_bank,
+                "FULL_KYC", "LOW", "Mumbai", "+919876543210", now_utc.isoformat()
+            )
+        )
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO customers (
+                customer_id, name, account_id, bank, kyc_status, risk_category, city, phone, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(to_acc_oid), receiver_name, receiver_acc_num, receiver_bank,
+                "SIMPLIFIED", "HIGH", "Surat", "+919876543211", now_utc.isoformat()
+            )
+        )
+    except Exception as e:
+        print(f"[SIMULATOR DB CUSTOMER ERROR] {e}")
+
     # Persist transaction in SQLite for investigation workspace
     try:
         conn.execute(
             """
-            INSERT OR IGNORE INTO transactions (
-                transaction_id, sender_id, sender_account, receiver_id, receiver_account,
+            INSERT OR REPLACE INTO transactions (
+                transaction_id, case_id, sender_id, sender_account, receiver_id, receiver_account,
                 amount, channel, step, type,
                 old_balance_orig, new_balance_orig,
                 old_balance_dest, new_balance_dest,
                 timestamp, is_fraud, alert_triggered, scenario_type, severity
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 str(txn_oid),
+                case_id,
                 str(from_acc_oid),
-                str(from_acc_oid),
+                sender_acc_num,
                 str(to_acc_oid),
-                str(to_acc_oid),
+                receiver_acc_num,
                 req.amount,
                 req.channel,
                 _derive_step(now_utc.isoformat()),
@@ -379,10 +422,44 @@ def execute_simulator_transfer(
                 now_utc.isoformat(),
                 1 if composite_risk_band == "CRITICAL" else 0,
                 1 if composite_risk_band in ["HIGH", "CRITICAL"] else 0,
-                "STRUCTURING" if is_structuring_scenario else "LIVE",
+                "STRUCTURING" if is_structuring_scenario else ("SCENARIO_A" if req.scenario == "A" else "LIVE"),
                 composite_risk_band,
             )
         )
+
+        # If an alert fired, ensure the case exists in SQLite `cases` directory
+        if case_id:
+            existing_case = conn.execute("SELECT case_id FROM cases WHERE case_id = ?", (case_id,)).fetchone()
+            if existing_case:
+                conn.execute(
+                    """
+                    UPDATE cases
+                    SET risk_score = ?, risk_band = ?, recommended_action = ?, updated_at = ?
+                    WHERE case_id = ?
+                    """,
+                    (composite_risk_score, composite_risk_band, recommended_action, now_utc.isoformat(), case_id)
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO cases (
+                        case_id, transaction_id, status, risk_score, risk_band,
+                        recommended_action, analyst_id, opened_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        case_id,
+                        str(txn_oid),
+                        "OPEN",
+                        composite_risk_score,
+                        composite_risk_band,
+                        recommended_action,
+                        "Marcus Johnson",
+                        now_utc.isoformat(),
+                        now_utc.isoformat(),
+                    )
+                )
+
         conn.commit()
     except Exception as e:
         print(f"[SIMULATOR DB LOG ERROR] {e}")

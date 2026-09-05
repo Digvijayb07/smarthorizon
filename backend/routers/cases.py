@@ -167,8 +167,9 @@ async def get_case(
     _: CurrentUser = Depends(current_user),
 ):
     """Get full case details including linked transaction."""
+    clean_id = case_id.strip().replace(" ", "-")
     case = conn.execute(
-        "SELECT * FROM cases WHERE case_id = ?", (case_id,)
+        "SELECT * FROM cases WHERE case_id = ? OR case_id = ?", (case_id, clean_id)
     ).fetchone()
 
     if not case:
@@ -252,11 +253,14 @@ async def submit_decision(
             "Three Lines of Defense & RBI Maker-Checker Policy: AML Investigators (1st Line) can only escalate findings. Irreversible enforcement (Block/Dismiss) requires independent Manager authorization (2nd Line).",
         )
 
+    clean_id = case_id.strip().replace(" ", "-")
     case = conn.execute(
-        "SELECT * FROM cases WHERE case_id = ?", (case_id,)
+        "SELECT * FROM cases WHERE case_id = ? OR case_id = ?", (case_id, clean_id)
     ).fetchone()
     if not case:
         raise HTTPException(404, f"Case {case_id} not found")
+
+    actual_case_id = dict(case)["case_id"]
 
     valid_decisions = {"APPROVE_BLOCK", "APPROVE_FLAG", "DISMISS", "ESCALATE"}
     if body.decision not in valid_decisions:
@@ -278,17 +282,17 @@ async def submit_decision(
         (
             user.email, body.decision, body.notes,
             status, now, now if status == "CLOSED" else None,
-            case_id,
+            actual_case_id,
         ),
     )
     conn.commit()
 
-    log_audit(conn, case_id, "ANALYST_DECISION",
+    log_audit(conn, actual_case_id, "ANALYST_DECISION",
               actor=user.email,
               details=f"decision={body.decision}, notes={body.notes}")
 
     return {
-        "case_id": case_id,
+        "case_id": actual_case_id,
         "decision": body.decision,
         "status": status,
         "decided_at": now,
@@ -303,6 +307,15 @@ async def update_case(
     conn: sqlite3.Connection = Depends(get_db),
 ):
     """Update case fields (report, STR draft, status). Uses `is not None` to allow clearing fields."""
+    clean_id = case_id.strip().replace(" ", "-")
+    case = conn.execute(
+        "SELECT * FROM cases WHERE case_id = ? OR case_id = ?", (case_id, clean_id)
+    ).fetchone()
+    if not case:
+        raise HTTPException(404, f"Case {case_id} not found")
+
+    actual_case_id = dict(case)["case_id"]
+
     updates: list[str] = []
     params: list = []
 
@@ -323,12 +336,12 @@ async def update_case(
 
     updates.append("updated_at = ?")
     params.append(datetime.utcnow().isoformat())
-    params.append(case_id)
+    params.append(actual_case_id)
 
     conn.execute(f"UPDATE cases SET {', '.join(updates)} WHERE case_id = ?", params)
     conn.commit()
 
-    log_audit(conn, case_id, "CASE_UPDATED", actor=user.email,
+    log_audit(conn, actual_case_id, "CASE_UPDATED", actor=user.email,
               details=f"Updated fields: {[u.split(' =')[0] for u in updates[:-1]]}")
 
-    return {"case_id": case_id, "updated": True}
+    return {"case_id": actual_case_id, "updated": True}

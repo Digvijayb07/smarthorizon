@@ -129,7 +129,8 @@ function backendToFrontendCase(bc: BackendCase): { caseData: Case; chips: string
 }
 
 function CaseWorkspacePage() {
-  const { caseId } = Route.useParams();
+  const { caseId: rawCaseId } = Route.useParams();
+  const caseId = useMemo(() => (rawCaseId || "").trim().replace(/\s+/g, "-"), [rawCaseId]);
   const queryClient = useQueryClient();
   const [investigationResult, setInvestigationResult] = useState<string | null>(null);
   const [strDraftResult, setStrDraftResult] = useState<string | null>(null);

@@ -28,6 +28,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { API_BASE } from "@/lib/api";
 
 export const Route = createFileRoute("/bank")({
   component: BankSimulatorPage,
@@ -67,6 +68,7 @@ interface TelemetryLog {
   level: "info" | "warn" | "critical" | "success";
   ctaLink?: string;
   ctaLabel?: string;
+  caseId?: string;
 }
 
 // Fallback initial accounts while MongoDB Atlas is fetching
@@ -160,7 +162,8 @@ function BankSimulatorPage() {
     text: string,
     level: "info" | "warn" | "critical" | "success" = "info",
     ctaLink?: string,
-    ctaLabel?: string
+    ctaLabel?: string,
+    caseId?: string
   ) => {
     const time = new Date().toLocaleTimeString("en-IN");
     setLogs((prev) => [
@@ -172,6 +175,7 @@ function BankSimulatorPage() {
         level,
         ctaLink,
         ctaLabel,
+        caseId,
       },
     ]);
   }, []);
@@ -179,7 +183,7 @@ function BankSimulatorPage() {
   // Fetch live accounts from MongoDB Atlas
   const fetchLiveAccounts = useCallback(async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/simulator/accounts");
+      const res = await fetch(`${API_BASE}/api/simulator/accounts`);
       if (res.ok) {
         const data: AccountProfile[] = await res.json();
         if (data && data.length > 0) {
@@ -202,7 +206,7 @@ function BankSimulatorPage() {
   // Fetch live passbook from MongoDB Atlas
   const fetchLivePassbook = useCallback(async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/simulator/passbook");
+      const res = await fetch(`${API_BASE}/api/simulator/passbook`);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -218,7 +222,7 @@ function BankSimulatorPage() {
   useEffect(() => {
     fetchLiveAccounts();
     fetchLivePassbook();
-    addLog("[CONNECTED] Real-time bridge active to SafeFlow SOC (:8000) & MongoDB Atlas", "success");
+    addLog("[CONNECTED] Real-time bridge active to SafeFlow SOC & MongoDB Atlas", "success");
   }, [fetchLiveAccounts, fetchLivePassbook, addLog]);
 
   const activeSender = accounts.find((a) => a.id === activeSenderId) || accounts[0]!;
@@ -260,7 +264,7 @@ function BankSimulatorPage() {
         step_number: stepNum,
       };
 
-      const res = await fetch("http://localhost:8000/api/simulator/transfer", {
+      const res = await fetch(`${API_BASE}/api/simulator/transfer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -332,12 +336,13 @@ function BankSimulatorPage() {
     );
 
     if (res) {
-      if (res.composite_risk_band === "CRITICAL") {
+      if (res.composite_risk_band === "CRITICAL" || res.composite_risk_band === "HIGH") {
         addLog(
           `🚨 [CRITICAL ALERT] SafeFlow ML Flagged Txn! Risk: ${res.composite_risk_score}/100 · Case #${res.case_id}`,
           "critical",
           `/dashboard/cases/${res.case_id}`,
-          "Open Case in SafeFlow SOC"
+          "Open Case in SafeFlow SOC",
+          res.case_id
         );
       } else {
         addLog(
@@ -390,7 +395,8 @@ function BankSimulatorPage() {
           `🚨 [HEIST INTERCEPTED] SafeFlow Model Score: ${res.composite_risk_score}/100 (CRITICAL)! Severe capital depletion. Case #${caseId} escalated to SOC!`,
           "critical",
           `/dashboard/cases/${caseId}`,
-          "Open Intercepted Case in SafeFlow SOC →"
+          "Open Intercepted Case in SafeFlow SOC →",
+          caseId
         );
         setScenarioAStep(3);
       }
@@ -467,7 +473,8 @@ function BankSimulatorPage() {
           `🚨 [CRITICAL SYNDICATE FLAGGED] Standalone ML still saw <₹50k, BUT SafeFlow NetworkX Graph Engine detected 1-to-N Smurfing Ring! Composite Risk: 98.4/100 (CRITICAL). Case #${caseId}`,
           "critical",
           `/dashboard/cases/${caseId}`,
-          "Inspect Multi-Hop Graph in SafeFlow SOC →"
+          "Inspect Multi-Hop Graph in SafeFlow SOC →",
+          caseId
         );
         setScenarioBStep(4);
       }
@@ -496,7 +503,7 @@ function BankSimulatorPage() {
   const resetBalancesInMongo = async () => {
     try {
       addLog("[DATABASE RESET] Restoring Demo Trader balance to ₹10,00,000 in MongoDB Atlas...", "info");
-      const res = await fetch("http://localhost:8000/api/simulator/reset-balances", {
+      const res = await fetch(`${API_BASE}/api/simulator/reset-balances`, {
         method: "POST",
       });
       if (res.ok) {
@@ -540,7 +547,7 @@ function BankSimulatorPage() {
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                Double-Entry Ledger Simulation · Live Webhook to SafeFlow SOC Grid (:8000)
+                Double-Entry Ledger Simulation · Live Webhook to SafeFlow SOC Grid
               </p>
             </div>
           </div>
@@ -994,7 +1001,7 @@ function BankSimulatorPage() {
                   </Button>
 
                   {scenarioAStep === 3 && (
-                    <Link to="/dashboard/cases/FC-20260815-8E916E">
+                    <Link to="/dashboard/cases/$caseId" params={{ caseId: "FC-20260815-8E916E" }}>
                       <Button
                         size="sm"
                         variant="outline"
@@ -1110,7 +1117,7 @@ function BankSimulatorPage() {
                   </Button>
 
                   {scenarioBStep >= 3 && (
-                    <Link to="/dashboard/cases/FC-20260904-STR01">
+                    <Link to="/dashboard/cases/$caseId" params={{ caseId: "FC-20260904-STR01" }}>
                       <Button
                         size="sm"
                         variant="outline"
@@ -1136,7 +1143,7 @@ function BankSimulatorPage() {
               </div>
               <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1">
                 <span className="size-1.5 rounded-full bg-emerald-400 animate-ping" />
-                PORT 8000 LIVE
+                LIVE SOC FEED
               </span>
             </div>
 
@@ -1159,9 +1166,9 @@ function BankSimulatorPage() {
                     <span className="break-all">{log.text}</span>
                   </div>
 
-                  {log.ctaLink && (
+                  {log.caseId ? (
                     <div className="pl-6 pt-0.5 pb-1">
-                      <Link to={log.ctaLink}>
+                      <Link to="/dashboard/cases/$caseId" params={{ caseId: log.caseId }}>
                         <Button
                           size="sm"
                           variant="outline"
@@ -1172,7 +1179,20 @@ function BankSimulatorPage() {
                         </Button>
                       </Link>
                     </div>
-                  )}
+                  ) : log.ctaLink ? (
+                    <div className="pl-6 pt-0.5 pb-1">
+                      <a href={log.ctaLink}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 text-[10px] font-mono border-rose-500/50 bg-rose-500/10 hover:bg-rose-500/25 text-rose-300 gap-1 rounded"
+                        >
+                          {log.ctaLabel || "View in SafeFlow SOC"}
+                          <ChevronRight className="size-3" />
+                        </Button>
+                      </a>
+                    </div>
+                  ) : null}
                 </div>
               ))}
               <div ref={terminalEndRef} />
