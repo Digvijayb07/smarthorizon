@@ -125,12 +125,11 @@ desktop.ini
 # Temporary review clone (used during branch analysis)
 graph_agent_review/
 
-# Large raw dataset files (too big for GitHub — use DVC or share via Drive)
-backend/drivematerial/drive_material/Data/paysim dataset.csv
-backend/drivematerial/drive_material/Data/paysim_account_customer_mapping.csv
+# Large raw dataset files, notebooks, research & downloads
+backend/drivematerial/
 drive-download*/
-ML/*.csv
-ML/*.pkl
+ML/
+Research/
 
 # Generic large binary/data formats
 *.csv.gz
@@ -143,13 +142,18 @@ frontend/.output/
 frontend/.wrangler/
 frontend/.vercel/
 
-
+# Internal sprint, review & evaluator markdown documents
+EVALUATOR_CONCERNS_AND_FIXES.md
+frontend/AGENTS.md
+frontend/src/routes/README.md
 horizon2_audit_and_test_plan.md
 implementation_plan.md
 PROJECT_STATUS_AND_MERGE_SUMMARY.md
 walkthrough.md
 HACKATHON_DEMO_AND_LEDGER_UI_PLAN.md
 SAFE_FLOW_34HR_IMPLEMENTATION_PLAN.md
+
+# Ledger
 ledger/node_modules/
 ledger/.env
 ledger/README.md
