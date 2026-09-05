@@ -134,6 +134,8 @@ function BankSimulatorPage() {
   // Scenario step execution tracking
   const [scenarioAStep, setScenarioAStep] = useState<number>(0); // 0 = idle, 1, 2, 3 completed
   const [scenarioBStep, setScenarioBStep] = useState<number>(0); // 0 = idle, 1, 2, 3, 4 completed
+  const [scenarioACaseId, setScenarioACaseId] = useState<string>("FC-20260815-8E916E");
+  const [scenarioBCaseId, setScenarioBCaseId] = useState<string>("FC-20260904-STR01");
 
   const [passbook, setPassbook] = useState<PassbookEntry[]>([]);
 
@@ -391,6 +393,7 @@ function BankSimulatorPage() {
       const res = await executeTransfer(victim.id, muleAlpha.id, 470000, "IMPS", "High-Value Account Drain", "A", 3);
       if (res) {
         const caseId = res.case_id || "FC-20260815-8E916E";
+        setScenarioACaseId(caseId);
         addLog(
           `🚨 [HEIST INTERCEPTED] SafeFlow Model Score: ${res.composite_risk_score}/100 (CRITICAL)! Severe capital depletion. Case #${caseId} escalated to SOC!`,
           "critical",
@@ -469,6 +472,7 @@ function BankSimulatorPage() {
         setScenarioBStep(3);
       } else if (step === 4) {
         const caseId = res.case_id || "FC-20260904-STR01";
+        setScenarioBCaseId(caseId);
         addLog(
           `🚨 [CRITICAL SYNDICATE FLAGGED] Standalone ML still saw <₹50k, BUT SafeFlow NetworkX Graph Engine detected 1-to-N Smurfing Ring! Composite Risk: 98.4/100 (CRITICAL). Case #${caseId}`,
           "critical",
@@ -1117,7 +1121,7 @@ function BankSimulatorPage() {
                   </Button>
 
                   {scenarioBStep >= 3 && (
-                    <Link to="/dashboard/cases/$caseId" params={{ caseId: "FC-20260904-STR01" }}>
+                    <Link to="/dashboard/cases/$caseId" params={{ caseId: scenarioBCaseId }}>
                       <Button
                         size="sm"
                         variant="outline"

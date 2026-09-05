@@ -79,7 +79,7 @@ async def list_cases(
     if wheres:
         query += " WHERE " + " AND ".join(wheres)
 
-    query += " ORDER BY opened_at DESC LIMIT ? OFFSET ?"
+    query += " ORDER BY COALESCE(updated_at, opened_at) DESC, opened_at DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
 
     rows = conn.execute(query, params).fetchall()

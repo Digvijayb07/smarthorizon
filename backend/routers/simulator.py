@@ -342,13 +342,15 @@ def execute_simulator_transfer(
         composite_risk_score = 98.4
         composite_risk_band = "CRITICAL"
         recommended_action = "ESCALATE"
-        case_id = "FC-20260904-STR01"
+        clean_hex = str(txn_oid)[-6:].upper()
+        case_id = f"FC-{now_utc.strftime('%Y%m%d')}-STR{clean_hex}"
 
     elif req.scenario == "A" and req.step_number == 3:
         composite_risk_score = max(score["risk_score"], 98.3)
         composite_risk_band = "CRITICAL"
         recommended_action = "ESCALATE"
-        case_id = "FC-20260815-8E916E"
+        clean_hex = str(txn_oid)[-6:].upper()
+        case_id = f"FC-{now_utc.strftime('%Y%m%d')}-DRN{clean_hex}"
 
     elif score["risk_score"] >= THRESHOLD_HIGH or req.amount >= 200000 or composite_risk_band in ("HIGH", "CRITICAL"):
         composite_risk_score = max(score["risk_score"], 98.3)
@@ -429,15 +431,26 @@ def execute_simulator_transfer(
 
         # If an alert fired, ensure the case exists in SQLite `cases` directory
         if case_id:
+            if is_structuring_scenario:
+                # Back-link all structuring hops from this session to the new case ID
+                conn.execute(
+                    """
+                    UPDATE transactions
+                    SET case_id = ?
+                    WHERE sender_id = ? AND scenario_type = 'STRUCTURING' AND (case_id IS NULL OR case_id = '')
+                    """,
+                    (case_id, str(from_acc_oid))
+                )
+
             existing_case = conn.execute("SELECT case_id FROM cases WHERE case_id = ?", (case_id,)).fetchone()
             if existing_case:
                 conn.execute(
                     """
                     UPDATE cases
-                    SET risk_score = ?, risk_band = ?, recommended_action = ?, updated_at = ?
+                    SET risk_score = ?, risk_band = ?, recommended_action = ?, opened_at = ?, updated_at = ?
                     WHERE case_id = ?
                     """,
-                    (composite_risk_score, composite_risk_band, recommended_action, now_utc.isoformat(), case_id)
+                    (composite_risk_score, composite_risk_band, recommended_action, now_utc.isoformat(), now_utc.isoformat(), case_id)
                 )
             else:
                 conn.execute(

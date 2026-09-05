@@ -87,10 +87,13 @@ function CasesListPage() {
     refetchOnMount: "always",
   });
 
-  // Use backend data if available, fallback to mock
-  const cases = apiResponse
+  // Use backend data if available, fallback to mock (sorted newest first)
+  const cases = (apiResponse
     ? apiResponse.cases.map(backendCaseToUI)
-    : mockCases;
+    : mockCases
+  ).sort(
+    (a, b) => new Date(b.openedAt || 0).getTime() - new Date(a.openedAt || 0).getTime()
+  );
 
   const filteredCases = cases.filter((item) => {
     const matchesSearch =
