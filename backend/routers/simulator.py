@@ -285,10 +285,12 @@ def execute_simulator_transfer(
         is_new = True
         vpn = False
     else:
-        paysim_type = "PAYMENT" if req.amount < 30000 else "TRANSFER"
-        step_hour = 14 if req.amount < 30000 else 3
-        dest_bal = max(receiver_bal_before, 25000.0) if req.amount < 30000 else receiver_bal_before
-        is_new = True if req.amount >= 100000 else False
+        # Manual transfer from simulator
+        is_large = req.amount >= 200000
+        paysim_type = "PAYMENT" if req.amount < 50000 else "TRANSFER"
+        step_hour = 3 if is_large else 14  # 2:00 PM daylight unless large drain
+        dest_bal = max(receiver_bal_before, 25000.0) if req.amount < 50000 else receiver_bal_before
+        is_new = True if is_large else False
         vpn = False
 
     score_input = {
