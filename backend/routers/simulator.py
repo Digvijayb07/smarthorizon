@@ -15,13 +15,21 @@ Every transaction:
 import os
 import uuid
 import datetime
-import certifi
 import sqlite3
-from typing import Optional, List
+from typing import Optional, List, Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from pymongo import MongoClient
-from bson import ObjectId
+
+try:
+    import certifi
+    from pymongo import MongoClient
+    from bson import ObjectId
+    PYMONGO_AVAILABLE = True
+except ImportError:
+    certifi = None
+    MongoClient = None
+    ObjectId = object
+    PYMONGO_AVAILABLE = False
 
 from database import get_db, log_audit
 from routers.score import score_transaction
@@ -39,11 +47,16 @@ _mongo_client = None
 
 def get_mongo_db():
     global _mongo_client
+    if not PYMONGO_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="MongoDB client (pymongo) is not installed. Run: pip install pymongo certifi"
+        )
     if _mongo_client is None:
         try:
             _mongo_client = MongoClient(
                 MONGO_URI,
-                tlsCAFile=certifi.where(),
+                tlsCAFile=certifi.where() if certifi else None,
                 retryWrites=True,
                 w="majority"
             )

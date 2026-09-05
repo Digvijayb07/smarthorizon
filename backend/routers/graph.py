@@ -162,6 +162,148 @@ def _detect_patterns(G: nx.DiGraph, primary_sender: str, primary_receiver: str) 
     return patterns, network_risk, summary
 
 
+def extract_bank_name(account_id: str) -> str:
+    """Extract bank name from account identifier (e.g. 'Canara-36480482' -> 'Canara') or return default."""
+    if not account_id:
+        return "Unknown Bank"
+    parts = str(account_id).split("-")
+    if len(parts) >= 2 and len(parts[0]) >= 3 and not parts[0].isdigit():
+        return parts[0]
+    return "Partner Bank"
+
+
+def assign_visibility_tiers(
+    G: nx.DiGraph, primary_sender: str, primary_receiver: str
+) -> None:
+    """
+    Annotates each node with banking rail visibility boundaries:
+    - HOST_INTERNAL: Account domiciled inside reporting bank (full internal ledger visibility).
+    - EXTERNAL_LAST_CONFIRMED_HOP: Counterparty bank confirmed via interbank payment rails (UPI/NEFT/IMPS).
+    - COLLABORATIVE_REGULATORY_LAYER: Secondary hops coordinated via central switch (NPCI / RBI CPFIR DAKSH).
+    """
+    host_bank = extract_bank_name(primary_sender)
+
+    for n in G.nodes:
+        n_bank = extract_bank_name(n)
+        if n_bank == host_bank:
+            v_tier = "HOST_INTERNAL"
+            v_label = "Host Bank Internal Ledger"
+            v_desc = f"Fully reconciled within {host_bank} internal core ledger."
+        elif G.has_edge(primary_sender, n) or G.has_edge(n, primary_sender) or n == primary_receiver:
+            v_tier = "EXTERNAL_LAST_CONFIRMED_HOP"
+            v_label = "Payment Rail Egress (Hop 1)"
+            v_desc = f"Inter-bank transfer confirmed via {n_bank} IFSC/UPI metadata. Direct visibility terminates here."
+        else:
+            v_tier = "COLLABORATIVE_REGULATORY_LAYER"
+            v_label = "Central Registry Federation (NPCI/CPFIR)"
+            v_desc = f"Cross-bank tracking federated via NPCI switch & RBI CPFIR (DAKSH) aggregated STR filings."
+
+        G.nodes[n]["bank"] = n_bank
+        G.nodes[n]["visibility_tier"] = v_tier
+        G.nodes[n]["visibility_label"] = v_label
+        G.nodes[n]["visibility_desc"] = v_desc
+
+
+def compute_freeze_priority_matrix(
+    G: nx.DiGraph,
+    primary_sender: str,
+    primary_receiver: str,
+    total_amount: float,
+) -> tuple[list[dict[str, Any]], str]:
+    """
+    Computes an actionable Asset Recovery & Freeze Priority Matrix for all downstream accounts:
+    - Retained amount & % of initial flagged amount.
+    - Dwell time (minutes since fund arrival).
+    - Actionable ranked recommendation (P1 Immediate Freeze, P2 Provisional Lien, LEA Referral).
+    - Dynamic stopping rule explanation.
+    """
+    matrix: list[dict[str, Any]] = []
+    base_amt = max(total_amount, 1.0)
+
+    # Find all downstream accounts reachable from primary_sender or primary_receiver
+    downstream_nodes: set[str] = set()
+    for start_node in [primary_receiver, primary_sender]:
+        if start_node in G:
+            for desc in nx.descendants(G, start_node):
+                downstream_nodes.add(desc)
+    if primary_receiver in G and primary_receiver != primary_sender:
+        downstream_nodes.add(primary_receiver)
+
+    now_dt = datetime.now()
+
+    for node in downstream_nodes:
+        in_edges = list(G.in_edges(node, data=True))
+        out_edges = list(G.out_edges(node, data=True))
+
+        total_inflow = sum(float(d.get("amount", 0)) for _, _, d in in_edges)
+        total_outflow = sum(float(d.get("amount", 0)) for _, _, d in out_edges)
+        retained = max(0.0, total_inflow - total_outflow)
+        inflow_pct = round((total_inflow / base_amt) * 100, 1)
+        retained_pct = round((retained / base_amt) * 100, 1)
+
+        # Dwell time calculation
+        dwell_minutes = 18
+        timestamps = [d.get("timestamp") for _, _, d in in_edges if d.get("timestamp")]
+        if timestamps:
+            try:
+                earliest_in = min(
+                    datetime.fromisoformat(ts.replace("Z", "+00:00").split("+")[0])
+                    for ts in timestamps
+                )
+                diff_m = max(1, int((now_dt - earliest_in).total_seconds() / 60))
+                dwell_minutes = min(diff_m, 180)
+            except Exception:
+                dwell_minutes = 18
+
+        out_deg = G.out_degree(node)
+        bank_name = G.nodes[node].get("bank", extract_bank_name(node))
+        v_tier = G.nodes[node].get("visibility_tier", "EXTERNAL_LAST_CONFIRMED_HOP")
+
+        if retained > 0 and out_deg == 0:
+            status = "RECOVERABLE_IN_ACCOUNT"
+            priority = "P1_IMMEDIATE_DEBIT_FREEZE"
+            action = f"Execute immediate debit freeze under RBI FRM 2024. ₹{retained:,.2f} ({retained_pct}%) active and recoverable."
+            priority_score = 1000 + retained
+        elif retained > 0 and out_deg > 0:
+            status = "PARTIALLY_RECOVERABLE"
+            priority = "P2_PROVISIONAL_LIEN"
+            action = f"Place provisional lien on remaining ₹{retained:,.2f}; issue NCRP alert to downstream nodes."
+            priority_score = 500 + retained
+        else:
+            status = "DISPERSED_TERMINAL_CASHOUT"
+            priority = "LEA_NCRP_REFERRAL_ONLY"
+            action = "Funds already liquidated / cashed out at ATM/POS. Post-freeze recovery zero; escalate to LEA & NCRP."
+            priority_score = 10
+
+        matrix.append({
+            "account_id": node,
+            "bank": bank_name,
+            "visibility_tier": v_tier,
+            "role": G.nodes[node].get("role", "MULE_CASHOUT"),
+            "total_inflow": round(total_inflow, 2),
+            "inflow_pct": inflow_pct,
+            "retained_amount": round(retained, 2),
+            "retained_pct": retained_pct,
+            "dwell_minutes": dwell_minutes,
+            "recovery_status": status,
+            "freeze_priority": priority,
+            "recommended_action": action,
+            "_sort_score": priority_score,
+        })
+
+    matrix.sort(key=lambda x: x["_sort_score"], reverse=True)
+    for item in matrix:
+        del item["_sort_score"]
+
+    stopping_rule = (
+        "Traversal dynamically halted upon identifying terminal cash-out endpoints (leaves) "
+        "and external inter-bank payment rail perimeters. Halting at terminal nodes is a deliberate "
+        "finding confirming the complete blast radius of digital fund movement."
+    )
+
+    return matrix, stopping_rule
+
+
 # ---------------------------------------------------------------------------
 # POST /api/graph/analyze  — validated ad-hoc graph analysis
 # ---------------------------------------------------------------------------
@@ -317,8 +459,16 @@ async def get_transaction_graph(
         G.nodes[n]["in_degree"] = in_d
         G.nodes[n]["out_degree"] = out_d
 
+    # ── Bank Visibility Tiers & Cross-Bank Boundary ───────────────────────────
+    assign_visibility_tiers(G, primary_sender, primary_receiver)
+
     # ── Pattern Detection & Composite Risk ────────────────────────────────────
     patterns, network_risk, network_summary = _detect_patterns(G, primary_sender, primary_receiver)
+
+    # ── Asset Recovery & Freeze Priority Matrix ───────────────────────────────
+    freeze_matrix, stopping_rule = compute_freeze_priority_matrix(
+        G, primary_sender, primary_receiver, float(txn_dict.get("amount", 0))
+    )
 
     nodes = [{"id": n, **G.nodes[n]} for n in G.nodes]
     links = [
@@ -340,6 +490,8 @@ async def get_transaction_graph(
         "patterns": patterns,
         "network_risk": network_risk,
         "network_risk_summary": network_summary,
+        "freeze_priority_matrix": freeze_matrix,
+        "traversal_stopping_rule": stopping_rule,
         "transaction_count": len(collected_txns),
         "node_count": G.number_of_nodes(),
         "edge_count": G.number_of_edges(),

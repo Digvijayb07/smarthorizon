@@ -256,6 +256,10 @@ function CaseWorkspacePage() {
               role: role,
               inDegree: typeof n.in_degree === "number" ? n.in_degree : undefined,
               outDegree: typeof n.out_degree === "number" ? n.out_degree : undefined,
+              bank: n.bank,
+              visibilityTier: n.visibility_tier,
+              visibilityLabel: n.visibility_label,
+              visibilityDesc: n.visibility_desc,
             });
           });
         });
@@ -290,6 +294,10 @@ function CaseWorkspacePage() {
           role: role,
           inDegree: typeof n.in_degree === "number" ? n.in_degree : undefined,
           outDegree: typeof n.out_degree === "number" ? n.out_degree : undefined,
+          bank: n.bank,
+          visibilityTier: n.visibility_tier,
+          visibilityLabel: n.visibility_label,
+          visibilityDesc: n.visibility_desc,
         };
       });
     }
@@ -365,6 +373,20 @@ function CaseWorkspacePage() {
       : [],
   };
 
+  const freezePriorityResult =
+    investigateMutation.data?.freeze_priority_matrix ||
+    graphData?.freeze_priority_matrix ||
+    backendCase?.freeze_priority_matrix;
+
+  const stoppingRuleResult =
+    investigateMutation.data?.traversal_stopping_rule ||
+    graphData?.traversal_stopping_rule ||
+    backendCase?.traversal_stopping_rule;
+
+  const privacyAuditResult =
+    investigateMutation.data?.privacy_audit ||
+    backendCase?.privacy_audit;
+
   if (isLoading) {
     return (
       <DashboardLayout title={`Case Workspace — ${caseId}`}>
@@ -394,6 +416,9 @@ function CaseWorkspacePage() {
         patterns={graphData?.patterns || []}
         networkRisk={graphData?.network_risk}
         networkRiskSummary={graphData?.network_risk_summary}
+        freezePriorityMatrix={freezePriorityResult}
+        traversalStoppingRule={stoppingRuleResult}
+        privacyAudit={privacyAuditResult}
         agents={agents}
         regulatorySources={regulatorySources}
         report={report}

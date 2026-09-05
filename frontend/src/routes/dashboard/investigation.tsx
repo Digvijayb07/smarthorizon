@@ -190,6 +190,9 @@ function InvestigationPage() {
         counterfactual={backendCase?.counterfactual}
         regulatoryClauses={backendCase?.regulatory_clauses}
         citedClauses={backendCase?.cited_clauses}
+        freezePriorityMatrix={investigateMutation.data?.freeze_priority_matrix || backendCase?.freeze_priority_matrix}
+        traversalStoppingRule={investigateMutation.data?.traversal_stopping_rule || backendCase?.traversal_stopping_rule}
+        privacyAudit={investigateMutation.data?.privacy_audit || backendCase?.privacy_audit}
       />
     </DashboardLayout>
   );

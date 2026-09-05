@@ -17,11 +17,13 @@ import {
   FileCheck,
   Lock,
   ArrowRight,
+  ArrowUpRight,
+  Info,
 } from "lucide-react";
 import { AgentStatus, type InvestigationAgentProgress } from "@/components/dashboard/AgentStatus";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { Agent, Case, GraphEdge, GraphNode, InvestigationReport, RegulatorySource } from "@/types/investigation";
+import type { Agent, Case, GraphEdge, GraphNode, InvestigationReport, RegulatorySource, FreezePriorityItem, PrivacyAuditInfo } from "@/types/investigation";
 import type { BackendCase } from "@/lib/api";
 import { useRole } from "@/context/RoleContext";
 import { InvestigationGraph } from "./InvestigationGraph";
@@ -43,6 +45,9 @@ export interface InvestigationWorkspaceProps {
   }> | undefined;
   networkRisk?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | string | undefined;
   networkRiskSummary?: string | undefined;
+  freezePriorityMatrix?: FreezePriorityItem[] | null | undefined;
+  traversalStoppingRule?: string | null | undefined;
+  privacyAudit?: PrivacyAuditInfo | null | undefined;
   agents: Agent[];
   regulatorySources: RegulatorySource[];
   report: InvestigationReport;
@@ -75,6 +80,9 @@ export function InvestigationWorkspace({
   patterns = [],
   networkRisk,
   networkRiskSummary,
+  freezePriorityMatrix = null,
+  traversalStoppingRule = null,
+  privacyAudit = null,
   agents,
   regulatorySources,
   report,
@@ -271,6 +279,8 @@ export function InvestigationWorkspace({
           patterns={patterns}
           networkRisk={networkRisk}
           networkRiskSummary={networkRiskSummary}
+          freezePriorityMatrix={freezePriorityMatrix || backendCase?.freeze_priority_matrix || []}
+          traversalStoppingRule={traversalStoppingRule || backendCase?.traversal_stopping_rule || undefined}
         />
         <RiskIntelligencePanel
           risk={caseData.risk}
@@ -315,6 +325,31 @@ export function InvestigationWorkspace({
 
         {recommendationReasoning ? (
           <div className="mt-4 space-y-4">
+            {/* Banking Privacy & Zero-Knowledge Tokenization Shield */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs shadow-2xs">
+              <div className="flex items-center gap-2.5">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+                  <ShieldCheck className="size-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-foreground">Banking Privacy Shield: Active</span>
+                    <span className="rounded bg-emerald-500/20 px-1.5 py-0.2 font-mono text-[9px] font-bold text-emerald-400 border border-emerald-500/30 uppercase">
+                      Zero Customer PII Sent to LLM
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    Account & transaction identifiers tokenized via client perimeter masking (DPDP Act 2023 & RBI IT Outsourcing Framework).
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="font-mono text-[10px] text-emerald-400 bg-background/80 px-2 py-1 rounded border border-emerald-500/30 font-semibold">
+                  {privacyAudit?.masked_tokens_count ? `${privacyAudit.masked_tokens_count} Tokens Masked` : "Perimeter Sanitized"}
+                </span>
+              </div>
+            </div>
+
             <div className="rounded-xl border border-violet/20 bg-violet/5 p-4 text-sm leading-relaxed text-foreground font-sans">
               <TraceableText
                 text={recommendationReasoning}
@@ -644,24 +679,28 @@ export function InvestigationWorkspace({
                 <Button
                   type="button"
                   variant={localDecision === "Block" ? "destructive" : "outline"}
-                  disabled={isSubmittingDecision || !recommendationReasoning}
+                  disabled={isSubmittingDecision || !recommendationReasoning || role === "investigator"}
                   onClick={() => handleDecisionClick("Block", "APPROVE_BLOCK")}
                   className={cn(
                     "gap-1.5 text-xs border-risk-high/30 text-risk-high",
-                    recommendationReasoning ? "hover:bg-risk-high/10" : "opacity-50 cursor-not-allowed"
+                    recommendationReasoning && role !== "investigator"
+                      ? "hover:bg-risk-high/10"
+                      : "opacity-40 cursor-not-allowed"
                   )}
+                  title={role === "investigator" ? "Requires manager sign-off" : undefined}
                 >
-                  <AlertTriangle className="size-4" />
-                  {isSubmittingDecision && localDecision === "Block" ? "Submitting..." : "Block & Report"}
+                  <ShieldAlert className="size-4" />
+                  Block & Report
+                  {role === "investigator" && <Lock className="size-3 ml-1" />}
                 </Button>
                 <Button
                   type="button"
-                  variant={localDecision === "Monitor" ? "default" : "outline"}
+                  variant={localDecision === "Flag" ? "secondary" : "outline"}
                   disabled={isSubmittingDecision || !recommendationReasoning}
-                  onClick={() => handleDecisionClick("Monitor", "APPROVE_FLAG")}
+                  onClick={() => handleDecisionClick("Flag", "APPROVE_FLAG")}
                   className={cn(
-                    "gap-1.5 text-xs border-risk-medium/30 text-risk-medium",
-                    recommendationReasoning ? "hover:bg-risk-medium/10" : "opacity-50 cursor-not-allowed"
+                    "gap-1.5 text-xs border-amber-500/30 text-amber-400",
+                    recommendationReasoning ? "hover:bg-amber-500/10" : "opacity-50 cursor-not-allowed"
                   )}
                 >
                   <ClipboardCheck className="size-4" />
@@ -670,33 +709,40 @@ export function InvestigationWorkspace({
                 <Button
                   type="button"
                   variant={localDecision === "Dismiss" ? "default" : "outline"}
-                  disabled={isSubmittingDecision || !recommendationReasoning}
+                  disabled={isSubmittingDecision || !recommendationReasoning || role === "investigator"}
                   onClick={() => handleDecisionClick("Dismiss", "DISMISS")}
                   className={cn(
                     "gap-1.5 text-xs border-risk-low/30 text-risk-low",
-                    recommendationReasoning ? "hover:bg-risk-low/10" : "opacity-50 cursor-not-allowed"
+                    recommendationReasoning && role !== "investigator"
+                      ? "hover:bg-risk-low/10"
+                      : "opacity-40 cursor-not-allowed"
                   )}
+                  title={role === "investigator" ? "Requires manager sign-off" : undefined}
                 >
                   <ShieldCheck className="size-4" />
                   Dismiss Case
+                  {role === "investigator" && <Lock className="size-3 ml-1" />}
                 </Button>
                 <Button
                   type="button"
-                  variant={localDecision === "Escalate" ? "default" : "outline"}
+                  variant="default"
                   disabled={isSubmittingDecision || !recommendationReasoning}
                   onClick={() => handleDecisionClick("Escalate", "ESCALATE")}
                   className={cn(
-                    "gap-1.5 text-xs bg-violet text-white",
-                    recommendationReasoning ? "hover:bg-violet/90" : "opacity-50 cursor-not-allowed"
+                    "gap-1.5 text-xs bg-violet text-white hover:bg-violet/90 ring-1 ring-violet/50 font-bold",
+                    !recommendationReasoning && "opacity-50 cursor-not-allowed"
                   )}
                 >
+                  <ArrowUpRight className="size-4" />
                   Escalate to Manager
                 </Button>
               </div>
               <span className="text-[10px] text-muted-foreground font-mono">
                 {role === "investigator"
-                  ? "• Role: Investigator (Can Escalate · Sign-off requires Manager)"
-                  : "• Role: Manager (Signatory authority active)"}
+                  ? "• Mode: Investigator (Escalate recommendation)"
+                  : role === "manager"
+                  ? "• Mode: Manager (Approval sign-off active)"
+                  : "• Mode: Administrator (Audit view)"}
               </span>
             </div>
           </div>

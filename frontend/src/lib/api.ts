@@ -203,6 +203,9 @@ export interface InvestigationResponse {
   counterfactual?: CounterfactualInsight | null | undefined;
   regulatory_clauses?: Record<string, RegulatoryClause> | null | undefined;
   cited_clauses?: string[] | null | undefined;
+  freeze_priority_matrix?: import("@/types/investigation").FreezePriorityItem[] | null | undefined;
+  traversal_stopping_rule?: string | null | undefined;
+  privacy_audit?: import("@/types/investigation").PrivacyAuditInfo | null | undefined;
   validated?: boolean | undefined;
   failed_checks?: string[] | undefined;
   forced_review_level?: string | null | undefined;
@@ -353,6 +356,10 @@ export interface CaseGraphNode {
   suspicious?: boolean | undefined;
   in_degree?: number | undefined;
   out_degree?: number | undefined;
+  bank?: string | undefined;
+  visibility_tier?: string | undefined;
+  visibility_label?: string | undefined;
+  visibility_desc?: string | undefined;
   [key: string]: unknown;
 }
 
@@ -381,6 +388,8 @@ export interface CaseGraphResponse {
   }>;
   network_risk?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
   network_risk_summary?: string;
+  freeze_priority_matrix?: import("@/types/investigation").FreezePriorityItem[] | null | undefined;
+  traversal_stopping_rule?: string | null | undefined;
   transaction_count: number;
   node_count: number;
   edge_count: number;

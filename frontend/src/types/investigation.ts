@@ -58,6 +58,29 @@ export interface ThreatItem {
   description: string;
 }
 
+export interface FreezePriorityItem {
+  account_id: string;
+  bank: string;
+  visibility_tier: string;
+  role: string;
+  total_inflow: number;
+  inflow_pct: number;
+  retained_amount: number;
+  retained_pct: number;
+  dwell_minutes: number;
+  recovery_status: string;
+  freeze_priority: string;
+  recommended_action: string;
+}
+
+export interface PrivacyAuditInfo {
+  pii_masked: boolean;
+  policy: string;
+  masked_tokens_count: number;
+  sanitized_types: string[];
+  token_sample?: Record<string, string>;
+}
+
 export interface GraphNode {
   id: string;
   label: string;
@@ -67,6 +90,10 @@ export interface GraphNode {
   role?: "ORIGIN" | "INTERMEDIARY" | "MULE_CASHOUT" | "FEEDER" | "BENEFICIARY" | "COUNTERPARTY" | string | undefined;
   inDegree?: number | undefined;
   outDegree?: number | undefined;
+  bank?: string | undefined;
+  visibilityTier?: string | undefined;
+  visibilityLabel?: string | undefined;
+  visibilityDesc?: string | undefined;
 }
 
 export interface GraphEdge {

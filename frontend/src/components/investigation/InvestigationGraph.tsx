@@ -11,9 +11,14 @@ import {
   Layers,
   Info,
   X,
+  Building2,
+  Clock,
+  ShieldCheck,
+  ExternalLink,
+  HelpCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { GraphEdge, GraphNode } from "@/types/investigation";
+import type { GraphEdge, GraphNode, FreezePriorityItem } from "@/types/investigation";
 
 export interface InvestigationGraphProps {
   nodes: GraphNode[];
@@ -27,6 +32,8 @@ export interface InvestigationGraphProps {
   }> | undefined;
   networkRisk?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | string | undefined;
   networkRiskSummary?: string | undefined;
+  freezePriorityMatrix?: FreezePriorityItem[] | undefined;
+  traversalStoppingRule?: string | undefined;
 }
 
 const roleLabels: Record<string, { label: string; color: string }> = {
@@ -44,6 +51,8 @@ export function InvestigationGraph({
   patterns = [],
   networkRisk = "LOW",
   networkRiskSummary,
+  freezePriorityMatrix = [],
+  traversalStoppingRule,
 }: InvestigationGraphProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
@@ -239,7 +248,7 @@ export function InvestigationGraph({
                   </div>
 
                   {/* Compact Account Badge & Role Tag */}
-                  <div className="flex flex-col items-center max-w-[90px]">
+                  <div className="flex flex-col items-center max-w-[95px]">
                     <span
                       className={cn(
                         "rounded bg-background/95 px-1.5 py-0.2 font-mono text-[8.5px] font-semibold border shadow-2xs tracking-tight truncate",
@@ -256,6 +265,21 @@ export function InvestigationGraph({
                     >
                       {roleMeta.label}
                     </span>
+                    {node.visibilityTier === "HOST_INTERNAL" && (
+                      <span className="mt-0.5 rounded px-1 py-0.2 text-[6.5px] font-semibold font-mono bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 whitespace-nowrap">
+                        Host Ledger
+                      </span>
+                    )}
+                    {node.visibilityTier === "EXTERNAL_LAST_CONFIRMED_HOP" && (
+                      <span className="mt-0.5 rounded px-1 py-0.2 text-[6.5px] font-semibold font-mono bg-amber-500/10 text-amber-400 border border-amber-500/30 whitespace-nowrap">
+                        Rail Egress (Hop 1)
+                      </span>
+                    )}
+                    {node.visibilityTier === "COLLABORATIVE_REGULATORY_LAYER" && (
+                      <span className="mt-0.5 rounded px-1 py-0.2 text-[6.5px] font-semibold font-mono bg-violet/10 text-violet border border-violet/30 whitespace-nowrap">
+                        NPCI / CPFIR
+                      </span>
+                    )}
                   </div>
                 </div>
               );
@@ -308,19 +332,34 @@ export function InvestigationGraph({
               ID
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <span className="font-mono font-bold text-foreground">{selectedNode.id}</span>
                 <span className="rounded bg-pink-500/20 px-1.5 py-0.5 text-[10px] font-bold text-pink-400 font-mono uppercase">
                   {selectedNode.role || "NODE"}
                 </span>
+                {selectedNode.bank && (
+                  <span className="rounded bg-background px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground border">
+                    {selectedNode.bank}
+                  </span>
+                )}
+                {selectedNode.visibilityLabel && (
+                  <span className="rounded bg-violet/10 text-violet border border-violet/20 px-1.5 py-0.5 text-[9px] font-mono">
+                    {selectedNode.visibilityLabel}
+                  </span>
+                )}
               </div>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-[11px] text-muted-foreground mt-0.5">
                 In-degree: <strong className="text-foreground">{selectedNode.inDegree ?? 0}</strong> · Out-degree:{" "}
                 <strong className="text-foreground">{selectedNode.outDegree ?? 0}</strong> · Suspicious Flag:{" "}
                 <strong className={selectedNode.suspicious ? "text-risk-high" : "text-teal"}>
                   {selectedNode.suspicious ? "YES" : "NO"}
                 </strong>
               </p>
+              {selectedNode.visibilityDesc && (
+                <p className="text-[10px] text-muted-foreground italic mt-0.5">
+                  {selectedNode.visibilityDesc}
+                </p>
+              )}
             </div>
           </div>
           <button
@@ -393,6 +432,136 @@ export function InvestigationGraph({
           <p className="text-[11px] text-muted-foreground uppercase font-mono">Flagged</p>
         </div>
       </div>
+
+      {/* ── Asset Recovery & Freeze Priority Matrix (Actionable Intervention) ── */}
+      {freezePriorityMatrix && freezePriorityMatrix.length > 0 && (
+        <div className="mt-5 space-y-3 border-t border-border pt-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+            <div>
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="size-4 text-risk-high" />
+                <h3 className="text-sm font-bold tracking-tight text-foreground">
+                  Asset Recovery & Freeze Priority Matrix
+                </h3>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Ranked by active recoverable balance and rapid mule dwell time per RBI FRM 2024 directives.
+              </p>
+            </div>
+            <span className="rounded bg-card px-2 py-0.5 font-mono text-[10px] text-muted-foreground border border-border">
+              {freezePriorityMatrix.length} Downstream Account{freezePriorityMatrix.length > 1 ? "s" : ""}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2.5">
+            {freezePriorityMatrix.map((item, idx) => {
+              const isP1 = item.freeze_priority === "P1_IMMEDIATE_DEBIT_FREEZE";
+              const isP2 = item.freeze_priority === "P2_PROVISIONAL_LIEN";
+
+              return (
+                <div
+                  key={`freeze-${item.account_id}-${idx}`}
+                  className={cn(
+                    "flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-xl border p-3 text-xs shadow-2xs transition-all",
+                    isP1
+                      ? "border-risk-high/40 bg-risk-high/5 hover:border-risk-high/60"
+                      : isP2
+                      ? "border-amber-500/40 bg-amber-500/5 hover:border-amber-500/60"
+                      : "border-border bg-card/50 hover:border-border/80"
+                  )}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <div
+                      className={cn(
+                        "mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md font-mono text-[10px] font-bold border",
+                        isP1
+                          ? "border-risk-high/40 bg-risk-high/20 text-risk-high"
+                          : isP2
+                          ? "border-amber-500/40 bg-amber-500/20 text-amber-400"
+                          : "border-border bg-muted/30 text-muted-foreground"
+                      )}
+                    >
+                      #{idx + 1}
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-mono font-bold text-foreground">{item.account_id}</span>
+                        <span className="rounded bg-background px-1.5 py-0.2 font-mono text-[9px] text-muted-foreground border">
+                          {item.bank}
+                        </span>
+                        <span
+                          className={cn(
+                            "rounded px-1.5 py-0.2 font-mono text-[8.5px] font-semibold border",
+                            item.visibility_tier === "HOST_INTERNAL"
+                              ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/30"
+                              : item.visibility_tier === "EXTERNAL_LAST_CONFIRMED_HOP"
+                              ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                              : "bg-violet/10 text-violet border-violet/30"
+                          )}
+                        >
+                          {item.visibility_tier === "HOST_INTERNAL"
+                            ? "Host Ledger"
+                            : item.visibility_tier === "EXTERNAL_LAST_CONFIRMED_HOP"
+                            ? "Rail Egress (Hop 1)"
+                            : "NPCI / CPFIR"}
+                        </span>
+                      </div>
+
+                      <p className="text-[11px] text-muted-foreground leading-snug">
+                        {item.recommended_action}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between md:justify-end gap-3 shrink-0 border-t md:border-t-0 pt-2 md:pt-0 border-border/50">
+                    <div className="text-left md:text-right">
+                      <div className="flex items-center gap-1 font-mono font-bold text-foreground">
+                        <span>₹{item.retained_amount.toLocaleString()}</span>
+                        <span className="text-[10px] text-muted-foreground font-normal">
+                          ({item.retained_pct}% retained)
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <Clock className="size-3 text-muted-foreground" />
+                        <span>Dwell: {item.dwell_minutes}m</span>
+                      </div>
+                    </div>
+
+                    <span
+                      className={cn(
+                        "rounded-lg px-2.5 py-1 text-[10px] font-bold font-mono tracking-tight border uppercase whitespace-nowrap",
+                        isP1
+                          ? "border-risk-high/50 bg-risk-high/20 text-risk-high"
+                          : isP2
+                          ? "border-amber-500/50 bg-amber-500/20 text-amber-400"
+                          : "border-purple-500/50 bg-purple-500/20 text-purple-400"
+                      )}
+                    >
+                      {isP1 ? "Immediate Freeze" : isP2 ? "Provisional Lien" : "NCRP Referral"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Bank Visibility & Traversal Stopping-Rule Notice ── */}
+      <div className="mt-4 rounded-xl border border-violet/20 bg-violet/5 p-3.5 text-xs text-muted-foreground space-y-1.5">
+        <div className="flex items-center gap-2">
+          <Building2 className="size-3.5 text-violet shrink-0" />
+          <strong className="text-foreground text-[11px] font-semibold">
+            Bank Visibility Boundary & Traversal Stopping Rule
+          </strong>
+        </div>
+        <p className="text-[11px] leading-relaxed">
+          {traversalStoppingRule ||
+            "Traversal dynamically halted upon reaching terminal cash-out endpoints (leaves) and inter-bank payment rail egress perimeters. Direct single-bank visibility terminates at Hop 1 (counterparty IFSC/UPI metadata). Multi-bank tracking beyond the host perimeter is coordinated via central switch federation (NPCI Switch & RBI CPFIR / DAKSH platform) upon STR transmission."}
+        </p>
+      </div>
+
       <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
         <Route className="size-3.5 text-violet" aria-hidden="true" />
         Multi-hop relational topology reconstructed via NetworkX from ledger database.

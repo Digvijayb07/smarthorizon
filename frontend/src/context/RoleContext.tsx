@@ -35,6 +35,38 @@ export const ROLE_PROFILES: Record<RoleId, UserProfile> = {
   },
 };
 
+export interface DefenseTierInfo {
+  tier: "1st Line" | "2nd Line" | "3rd Line";
+  name: string;
+  duty: string;
+  scope: string;
+  badgeClass: string;
+}
+
+export const ROLE_DEFENSE_TIERS: Record<RoleId, DefenseTierInfo> = {
+  investigator: {
+    tier: "1st Line",
+    name: "1st Line of Defense (Detection & Evidence)",
+    duty: "Detects, triages, and builds evidence. Prohibited from unilateral freeze/dismissal.",
+    scope: "Maker / Submits Escalate Recommendation",
+    badgeClass: "bg-blue-500/10 text-blue-400 border-blue-500/30",
+  },
+  manager: {
+    tier: "2nd Line",
+    name: "2nd Line of Defense (Maker-Checker Oversight)",
+    duty: "Independent review of investigator evidence. Holds sole authority to approve Block/Dismiss.",
+    scope: "Checker / Approves or Rejects Final Actions",
+    badgeClass: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+  },
+  administrator: {
+    tier: "3rd Line",
+    name: "3rd Line of Defense (Independent Governance & Audit)",
+    duty: "Manages user access and verifies cryptographic audit trails. Zero case-decision authority.",
+    scope: "Auditor / System Security & Compliance",
+    badgeClass: "bg-purple-500/10 text-purple-400 border-purple-500/30",
+  },
+};
+
 export const ROLE_TITLES: Record<RoleId, string> = {
   investigator: "Investigation Overview",
   manager: "Review & Approvals",
@@ -46,6 +78,7 @@ interface RoleContextType {
   setRole: (role: RoleId) => void;
   clearRole: () => void;
   user: UserProfile;
+  defenseTier: DefenseTierInfo;
   dashboardTitle: string;
   isAuthenticated: boolean;
   loginWithRole: (role: RoleId) => Promise<void>;
@@ -172,6 +205,7 @@ export function RoleProvider({ children }: { children: React.ReactNode }) {
     setRole,
     clearRole,
     user,
+    defenseTier: ROLE_DEFENSE_TIERS[role],
     dashboardTitle: ROLE_TITLES[role] || "Dashboard",
     isAuthenticated,
     loginWithRole,

@@ -249,7 +249,7 @@ async def submit_decision(
     if user.role == "investigator" and body.decision != "ESCALATE":
         raise HTTPException(
             403,
-            "Maker-Checker Policy: Investigators can only escalate cases to management. Switch to Manager role to sign off on Block or Dismiss.",
+            "Three Lines of Defense & RBI Maker-Checker Policy: AML Investigators (1st Line) can only escalate findings. Irreversible enforcement (Block/Dismiss) requires independent Manager authorization (2nd Line).",
         )
 
     case = conn.execute(
